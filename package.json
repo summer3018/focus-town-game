@@ -1,0 +1,22 @@
+{
+  "name": "focus-town-game",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "ちいさな集中タウン（仮） - 集中した時間が、自分だけの街になる",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  },
+  "homepage": "https://summer3018.github.io/focus-town-game/"
+}

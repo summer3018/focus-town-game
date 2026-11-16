@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#f6f1e7" />
+    <meta name="description" content="がんばった時間が、街になる。集中タイマーで街を育てるゲーム。" />
+    <title>ちいさな集中タウン（仮）</title>
+
+    <!-- ホーム画面に追加して、オフラインでも遊べるようにするための設定 -->
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="集中タウン" />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <!-- 1. タイトル画面 -->
+      <section class="screen screen--title is-active" data-screen="title">
+        <div class="title__art">
+          <canvas id="titleCanvas" class="title__canvas" aria-hidden="true"></canvas>
+        </div>
+        <div class="title__body">
+          <p class="title__eyebrow">ちいさな集中タウン<span class="title__tentative">（仮）</span></p>
+          <h1 class="title__copy">がんばった時間が、<br />街になる。</h1>
+          <p class="title__lead">
+            集中した時間のぶんだけスターがたまり、<br />小さな街が少しずつ育ちます。
+          </p>
+          <button class="btn btn--primary btn--xl" data-action="title-start">はじめる</button>
+          <p class="title__sub" data-role="title-sub"></p>
+        </div>
+      </section>
+
+      <!-- 2. 街のホーム画面 -->
+      <section class="screen screen--home" data-screen="home">
+        <header class="topbar">
+          <div class="stars" data-role="star-chip">
+            <span class="stars__icon" aria-hidden="true">★</span>
+            <span class="stars__value" data-role="star-count">0</span>
+          </div>
+          <div class="topbar__actions">
+            <button class="iconbtn" data-action="go-records" aria-label="プレイ記録">📊</button>
+            <button class="iconbtn" data-action="go-settings" aria-label="設定">⚙️</button>
+          </div>
+        </header>
+
+        <div class="town">
+          <canvas id="townCanvas" class="town__canvas" aria-label="あなたの街"></canvas>
+          <div class="town__label">
+            <span data-role="town-title">まだ何もない土地</span>
+            <span class="town__sub" data-role="town-sub"></span>
+          </div>
+        </div>
+
+        <div class="home__hint" data-role="home-hint"></div>
+
+        <nav class="home__actions">
+          <button class="btn btn--primary btn--xl" data-action="go-focus-setup">集中をはじめる</button>
+          <div class="home__row">
+            <button class="btn btn--ghost" data-action="go-minigame-intro">休憩ミニゲーム</button>
+            <button class="btn btn--ghost" data-action="go-records">プレイ記録</button>
+          </div>
+        </nav>
+      </section>
+
+      <!-- 3. 集中時間設定画面 -->
+      <section class="screen screen--setup" data-screen="focus-setup">
+        <header class="navbar">
+          <button class="iconbtn" data-action="back-home" aria-label="もどる">←</button>
+          <h2 class="navbar__title">集中する時間</h2>
+          <span class="navbar__spacer"></span>
+        </header>
+
+        <div class="setup__body">
+          <p class="setup__lead">はじめては5分がおすすめです。</p>
+          <div class="preset" data-role="preset-list"></div>
+
+          <div class="custom">
+            <label class="custom__label" for="customMinutes">じぶんで決める（1〜60分）</label>
+            <div class="custom__row">
+              <button class="stepbtn" data-action="custom-minus" aria-label="1分へらす">−</button>
+              <input
+                id="customMinutes"
+                class="custom__input"
+                type="number"
+                inputmode="numeric"
+                min="1"
+                max="60"
+                value="10"
+              />
+              <span class="custom__unit">分</span>
+              <button class="stepbtn" data-action="custom-plus" aria-label="1分ふやす">＋</button>
+            </div>
+            <button class="btn btn--ghost btn--block" data-action="use-custom">この時間にする</button>
+          </div>
+
+          <div class="setup__summary">
+            <div class="setup__summaryRow">
+              <span>選んだ時間</span><strong data-role="setup-minutes">5分</strong>
+            </div>
+            <div class="setup__summaryRow">
+              <span>終わる予定</span><strong data-role="setup-endtime">--:--</strong>
+            </div>
+            <div class="setup__summaryRow setup__summaryRow--reward">
+              <span>完了でもらえる</span><strong><span data-role="setup-reward">10</span> ★</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="screen__footer">
+          <button class="btn btn--primary btn--xl" data-action="start-focus">この時間で集中する</button>
+        </div>
+      </section>
+
+      <!-- 4. 集中タイマー画面 -->
+      <section class="screen screen--timer" data-screen="focus-timer">
+        <div class="timer__body">
+          <p class="timer__caption">集中中</p>
+          <div class="timer__dialWrap">
+            <svg class="timer__dial" viewBox="0 0 200 200" aria-hidden="true">
+              <circle class="timer__track" cx="100" cy="100" r="88" />
+              <circle class="timer__progress" cx="100" cy="100" r="88" data-role="timer-arc" />
+            </svg>
+            <div class="timer__center">
+              <div class="timer__remaining" data-role="timer-remaining">05:00</div>
+              <div class="timer__meta" data-role="timer-meta">5分の集中</div>
+            </div>
+          </div>
+          <dl class="timer__facts">
+            <div><dt>終わる予定</dt><dd data-role="timer-endtime">--:--</dd></div>
+            <div><dt>完了でもらえる</dt><dd><span data-role="timer-reward">10</span> ★</dd></div>
+          </dl>
+          <p class="timer__note">
+            画面は閉じても大丈夫です。実際の時刻で数えているので、戻ってきたときに続きが表示されます。
+          </p>
+        </div>
+        <div class="screen__footer">
+          <button class="btn btn--quiet btn--block" data-action="cancel-focus">集中をやめる</button>
+        </div>
+      </section>
+
+      <!-- 5. 集中完了・報酬画面 -->
+      <section class="screen screen--complete" data-screen="focus-complete">
+        <div class="complete__body">
+          <div class="complete__burst" data-role="complete-burst">★</div>
+          <h2 class="complete__title">おつかれさま</h2>
+          <p class="complete__lead" data-role="complete-lead">25分、集中できました。</p>
+          <div class="complete__reward">
+            <span class="complete__rewardValue" data-role="complete-stars">+50</span>
+            <span class="complete__rewardUnit">★</span>
+          </div>
+          <p class="complete__balance">いまのスター：<strong data-role="complete-balance">0</strong> ★</p>
+        </div>
+        <div class="screen__footer screen__footer--stack">
+          <button class="btn btn--primary btn--xl" data-action="go-home-build">街を育てる</button>
+          <button class="btn btn--ghost btn--block" data-action="go-minigame-intro">
+            1分だけ休憩する（スターキャッチ）
+          </button>
+          <button class="btn btn--quiet btn--block" data-action="go-focus-setup">つづけてもう一度集中する</button>
+        </div>
+      </section>
+
+      <!-- 7. スターキャッチ -->
+      <section class="screen screen--minigame" data-screen="minigame">
+        <header class="mg__bar">
+          <div class="mg__stat"><span>のこり</span><strong data-role="mg-time">60</strong></div>
+          <div class="mg__stat mg__stat--score"><span>スコア</span><strong data-role="mg-score">0</strong></div>
+          <div class="mg__stat"><span>コンボ</span><strong data-role="mg-combo">0</strong></div>
+        </header>
+        <div class="mg__stage">
+          <canvas id="mgCanvas" class="mg__canvas"></canvas>
+          <div class="mg__countdown" data-role="mg-countdown" hidden>3</div>
+          <div class="mg__fanfare" data-role="mg-fanfare" hidden></div>
+        </div>
+        <div class="screen__footer">
+          <button class="btn btn--quiet btn--block" data-action="mg-quit">やめる</button>
+        </div>
+      </section>
+
+      <!-- 8. ミニゲーム結果画面 -->
+      <section class="screen screen--mgresult" data-screen="minigame-result">
+        <div class="mgresult__body">
+          <div class="mgresult__rank" data-role="mgr-rank">A</div>
+          <h2 class="mgresult__title">スターキャッチ</h2>
+          <p class="mgresult__message" data-role="mgr-message"></p>
+          <div class="mgresult__score"><span data-role="mgr-score">0</span><small>点</small></div>
+          <dl class="mgresult__facts">
+            <div><dt>最大コンボ</dt><dd data-role="mgr-combo">0</dd></div>
+            <div><dt>ハイスコア</dt><dd data-role="mgr-best">0</dd></div>
+          </dl>
+          <p class="mgresult__note">
+            ミニゲームのスコアは街づくりのスターとは別です。街はあなたが集中した時間だけで育ちます。
+          </p>
+        </div>
+        <div class="screen__footer screen__footer--stack">
+          <button class="btn btn--primary btn--xl" data-action="mg-retry">もう一度あそぶ</button>
+          <button class="btn btn--ghost btn--block" data-action="back-home">街にもどる</button>
+        </div>
+      </section>
+
+      <!-- 9. プレイ記録画面 -->
+      <section class="screen screen--records" data-screen="records">
+        <header class="navbar">
+          <button class="iconbtn" data-action="back-home" aria-label="もどる">←</button>
+          <h2 class="navbar__title">プレイ記録</h2>
+          <span class="navbar__spacer"></span>
+        </header>
+        <div class="records__body" data-role="records-body"></div>
+        <div class="screen__footer screen__footer--stack">
+          <button class="btn btn--ghost btn--block" data-action="open-survey">アンケートに答える（任意）</button>
+          <button class="btn btn--primary btn--block" data-action="export-log">
+            記録をJSONで書き出す
+          </button>
+        </div>
+      </section>
+
+      <!-- 10. 設定画面 -->
+      <section class="screen screen--settings" data-screen="settings">
+        <header class="navbar">
+          <button class="iconbtn" data-action="back-home" aria-label="もどる">←</button>
+          <h2 class="navbar__title">設定</h2>
+          <span class="navbar__spacer"></span>
+        </header>
+        <div class="settings__body">
+          <div class="setting">
+            <label class="setting__row">
+              <span>効果音</span>
+              <input type="checkbox" class="switch" data-role="sound-toggle" />
+            </label>
+            <label class="setting__row">
+              <span>音量</span>
+              <input type="range" min="0" max="100" value="25" class="range" data-role="volume-range" />
+            </label>
+            <button class="btn btn--ghost btn--block" data-action="test-sound">音を鳴らしてみる</button>
+          </div>
+
+          <div class="setting">
+            <h3 class="setting__head">記録について</h3>
+            <p class="setting__note" data-role="settings-note"></p>
+            <button class="btn btn--ghost btn--block" data-action="export-log">記録をJSONで書き出す</button>
+            <button class="btn btn--ghost btn--block" data-action="replay-tutorial">操作説明をもう一度見る</button>
+            <button class="btn btn--danger btn--block" data-action="reset-all">記録をすべて消す</button>
+          </div>
+
+          <p class="settings__legal">
+            このゲームは端末の中だけにデータを保存します。個人情報・位置情報・連絡先・広告IDは集めません。
+            広告・課金・アカウント登録はありません。
+          </p>
+        </div>
+      </section>
+
+      <!-- 6. 建物選択・強化シート -->
+      <div class="sheet" data-role="build-sheet" hidden>
+        <div class="sheet__scrim" data-action="close-sheet"></div>
+        <div class="sheet__panel" role="dialog" aria-label="区画のメニュー">
+          <div class="sheet__handle"></div>
+          <div class="sheet__head">
+            <h3 class="sheet__title" data-role="sheet-title">区画1</h3>
+            <div class="stars stars--sm">
+              <span class="stars__icon" aria-hidden="true">★</span>
+              <span class="stars__value" data-role="sheet-stars">0</span>
+            </div>
+          </div>
+          <div class="sheet__content" data-role="sheet-content"></div>
+          <button class="btn btn--quiet btn--block" data-action="close-sheet">とじる</button>
+        </div>
+      </div>
+
+      <!-- 11. アンケート -->
+      <div class="sheet" data-role="survey-sheet" hidden>
+        <div class="sheet__scrim" data-action="close-survey"></div>
+        <div class="sheet__panel sheet__panel--tall" role="dialog" aria-label="アンケート">
+          <div class="sheet__handle"></div>
+          <h3 class="sheet__title">かんたんアンケート（任意）</h3>
+          <p class="survey__lead">
+            答えなくても遊べます。市場検証のために使わせてもらいます。端末の中にだけ保存されます。
+          </p>
+          <form class="survey" data-role="survey-form">
+            <fieldset class="survey__q">
+              <legend>1. 集中時間で街が育つ仕組みは面白いですか？</legend>
+              <div class="scale" data-role="scale-fun"></div>
+            </fieldset>
+            <fieldset class="survey__q">
+              <legend>2. またこのアプリを使いたいですか？</legend>
+              <div class="choices" data-role="choice-reuse"></div>
+            </fieldset>
+            <fieldset class="survey__q">
+              <legend>3. 街づくりとミニゲーム、どちらが楽しいですか？</legend>
+              <div class="choices" data-role="choice-prefer"></div>
+            </fieldset>
+            <fieldset class="survey__q">
+              <legend>4. 集中タイマーとして使いやすいですか？</legend>
+              <div class="scale" data-role="scale-usability"></div>
+            </fieldset>
+            <fieldset class="survey__q">
+              <legend>5. 改善してほしい点はありますか？</legend>
+              <textarea
+                class="survey__text"
+                data-role="survey-comment"
+                rows="3"
+                maxlength="1000"
+                placeholder="自由に書いてください（任意）"
+              ></textarea>
+            </fieldset>
+            <button type="submit" class="btn btn--primary btn--block">送信する</button>
+            <button type="button" class="btn btn--quiet btn--block" data-action="close-survey">あとにする</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- 初回の操作説明 -->
+      <div class="tutorial" data-role="tutorial" hidden>
+        <div class="tutorial__card">
+          <p class="tutorial__step" data-role="tutorial-step">1 / 3</p>
+          <h3 class="tutorial__title" data-role="tutorial-title"></h3>
+          <p class="tutorial__body" data-role="tutorial-body"></p>
+          <div class="tutorial__actions">
+            <button class="btn btn--quiet" data-action="tutorial-skip">とばす</button>
+            <button class="btn btn--primary" data-action="tutorial-next">つぎへ</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="toast" data-role="toast" hidden></div>
+    </div>
+
+    <noscript>
+      <p style="padding: 24px; font-family: sans-serif">
+        このゲームはJavaScriptが必要です。ブラウザの設定で有効にしてください。
+      </p>
+    </noscript>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
