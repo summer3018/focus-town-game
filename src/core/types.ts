@@ -2,8 +2,7 @@
 
 export type BuildingType = 'house' | 'shop' | 'park';
 
-/** 街の区画（0〜5の固定6マス） */
-export type SlotId = 0 | 1 | 2 | 3 | 4 | 5;
+import type { CellKey } from './grid';
 
 export interface PlacedBuilding {
   type: BuildingType;
@@ -76,7 +75,12 @@ export interface SaveData {
   focusCancelCount: number;
   totalFocusMs: number;
 
-  buildings: Partial<Record<SlotId, PlacedBuilding>>;
+  /** 持っている土地（座標キー "x,y"） */
+  land: CellKey[];
+  /** これまでに星で買った土地の数（土地の値段の計算に使う） */
+  landPurchases: number;
+  /** 建物（キーは land に含まれる座標） */
+  buildings: Record<CellKey, PlacedBuilding>;
 
   minigameBestScore: number;
   minigameBestCombo: number;
@@ -121,7 +125,7 @@ export interface LogEvent {
   starsBalance?: number;
   buildingType?: BuildingType;
   buildingLevel?: number;
-  slot?: number;
+  cell?: CellKey;
   score?: number;
   combo?: number;
   dayIndex?: number;

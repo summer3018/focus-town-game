@@ -6,7 +6,8 @@ import { downloadJson } from '../core/analytics';
 import { rewardForMinutes } from '../core/rewards';
 import { GameStore } from '../core/state';
 import { clampMinutes, formatClock, formatDuration, formatTotalDuration, minutesToMs, timerView } from '../core/timer';
-import type { BuildingType, SlotId, SurveyAnswer } from '../core/types';
+import type { BuildingType, SurveyAnswer } from '../core/types';
+import type { CellKey } from '../core/grid';
 import { TownRenderer } from '../render/town';
 import { drawBuildingPreview } from '../render/sprites';
 import { rankFor } from '../core/minigameLogic';
@@ -119,12 +120,12 @@ export class App {
     setText('sheet-stars', save.stars);
     setText('town-title', townTitle(save));
     const count = buildingCount(save);
-    role('town-sub').textContent = count === 0 ? '区画をタップして建てられます' : '建物 ' + count + ' / 6';
+    role('town-sub').textContent = count === 0 ? '区画をタップして建てられます' : '建物 ' + count + ' / ' + save.land.length;
 
     const hint = role('home-hint');
     if (count === 0 && save.stars < 20) {
       hint.textContent = 'まずは5分の集中から。20★で最初の建物が建ちます。';
-    } else if (count >= 6) {
+    } else if (count >= save.land.length) {
       hint.textContent = '建物をタップするとレベルを上げられます。';
     } else if (save.stars >= 20) {
       hint.textContent = '光っている区画をタップすると建てられます。';
@@ -250,20 +251,20 @@ export class App {
   private bindTownTaps(): void {
     const canvas = qs<HTMLCanvasElement>('#townCanvas');
     canvas.addEventListener('pointerdown', (ev) => {
-      const slot = this.town.hitSlot(ev.clientX, ev.clientY);
-      if (slot === null) return;
-      this.town.selectedSlot = slot;
+      const cell = this.town.hitCell(ev.clientX, ev.clientY);
+      if (cell === null) return;
+      this.town.selectedCell = cell;
       audio.play('tap');
-      this.openSheet(slot);
+      this.openSheet(cell);
     });
   }
 
-  private openSheet(slot: SlotId): void {
+  private openSheet(cell: CellKey): void {
     const sheet = role('build-sheet');
     const content = role('sheet-content');
     const save = this.store.save;
-    const existing = save.buildings[slot];
-    setText('sheet-title', '区画 ' + (slot + 1));
+    const existing = save.buildings[cell];
+    setText('sheet-title', existing ? BUILDINGS[existing.type].name : '空いている区画');
     content.innerHTML = '';
 
     if (!existing) {
@@ -275,7 +276,7 @@ export class App {
       for (const type of BUILDING_ORDER) {
         const spec = BUILDINGS[type];
         const cost = buildCost(type);
-        const affordable = canBuild(save, slot, type);
+        const affordable = canBuild(save, cell, type);
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'option';
@@ -297,7 +298,7 @@ export class App {
           const pctx = preview.getContext('2d');
           if (pctx) drawBuildingPreview(pctx, type, 1, 46, 46, 0);
         }
-        btn.addEventListener('click', () => this.doBuild(slot, type));
+        btn.addEventListener('click', () => this.doBuild(cell, type));
         content.appendChild(btn);
       }
     } else {
@@ -349,7 +350,7 @@ export class App {
           '★<small>' +
           (save.stars >= next ? '強化する' : 'あと' + (next - save.stars) + '★') +
           '</small></span>';
-        btn.addEventListener('click', () => this.doUpgrade(slot));
+        btn.addEventListener('click', () => this.doUpgrade(cell));
         content.appendChild(btn);
       }
     }
@@ -359,32 +360,32 @@ export class App {
 
   private closeSheet(): void {
     role('build-sheet').hidden = true;
-    this.town.selectedSlot = null;
+    this.town.selectedCell = null;
   }
 
-  private doBuild(slot: SlotId, type: BuildingType): void {
-    if (!this.store.construct(slot, type)) {
+  private doBuild(cell: CellKey, type: BuildingType): void {
+    if (!this.store.construct(cell, type)) {
       toast('スターが足りません');
       return;
     }
     audio.play('build');
     this.closeSheet();
-    this.town.markBuilt(slot);
+    this.town.markBuilt(cell);
     toast(BUILDINGS[type].name + 'を建てました');
     this.maybeAskSurvey();
   }
 
-  private doUpgrade(slot: SlotId): void {
-    const before = this.store.save.buildings[slot];
+  private doUpgrade(cell: CellKey): void {
+    const before = this.store.save.buildings[cell];
     if (!before) return;
-    if (!this.store.upgradeSlot(slot)) {
+    if (!this.store.upgradeCell(cell)) {
       toast('スターが足りません');
       return;
     }
     audio.play('levelUp');
     this.closeSheet();
-    this.town.markUpgraded(slot);
-    const after = this.store.save.buildings[slot];
+    this.town.markUpgraded(cell);
+    const after = this.store.save.buildings[cell];
     toast(BUILDINGS[before.type].name + ' レベル' + (after?.level ?? 2) + 'に成長しました');
     this.maybeAskSurvey();
   }
@@ -456,16 +457,14 @@ export class App {
         ? '<p class="empty">まだ建物がありません。集中してスターをためましょう。</p>'
         : '<div class="buildinglist">' +
           buildings
-            .map(([slot, b]) => {
+            .map(([, b]) => {
               const spec = BUILDINGS[b!.type];
               return (
                 '<div class="buildingrow"><span>' +
                 spec.icon +
                 ' ' +
                 spec.name +
-                '<small style="color:var(--ink-soft)">（区画' +
-                (Number(slot) + 1) +
-                '）</small></span><span class="buildingrow__lv">Lv.' +
+                '</span><span class="buildingrow__lv">Lv.' +
                 b!.level +
                 '</span></div>'
               );

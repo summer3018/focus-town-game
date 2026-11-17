@@ -112,20 +112,20 @@ describe('街づくり', () => {
     store.completeFocusIfDue(T0 + 25 * MIN); // +50
     expect(store.save.stars).toBe(50);
 
-    expect(store.construct(0, 'house', T0)).toBe(true);
+    expect(store.construct('0,0', 'house', T0)).toBe(true);
     expect(store.save.stars).toBe(30);
-    expect(store.upgradeSlot(0, T0)).toBe(true); // -30
+    expect(store.upgradeCell('0,0', T0)).toBe(true); // -30
     expect(store.save.stars).toBe(0);
-    expect(store.save.buildings[0]?.level).toBe(2);
+    expect(store.save.buildings['0,0']?.level).toBe(2);
 
-    expect(store.upgradeSlot(0, T0)).toBe(false);
+    expect(store.upgradeCell('0,0', T0)).toBe(false);
     expect(store.save.stars).toBe(0);
-    expect(store.save.buildings[0]?.level).toBe(2);
+    expect(store.save.buildings['0,0']?.level).toBe(2);
   });
 
   it('足りないのに建てようとしても残高は減らない', () => {
     const store = freshStore();
-    expect(store.construct(0, 'shop', T0)).toBe(false);
+    expect(store.construct('0,0', 'shop', T0)).toBe(false);
     expect(store.save.stars).toBe(0);
     expect(store.save.totalSpentStars).toBe(0);
   });
@@ -138,7 +138,7 @@ describe('プレイログ', () => {
     store.recordStartup(T0);
     store.startFocus(25, T0); // 50★ たまるので家（20★）を建てられる
     store.completeFocusIfDue(T0 + 25 * MIN);
-    expect(store.construct(0, 'house', T0)).toBe(true);
+    expect(store.construct('0,0', 'house', T0)).toBe(true);
     store.startMinigame();
     store.finishMinigame(430, 12);
 
@@ -156,8 +156,8 @@ describe('プレイログ', () => {
     const storage = createMemoryStorage();
     const store = new GameStore(storage, T0);
     store.save.stars = 500;
-    store.construct(0, 'shop', T0); // 30★
-    store.upgradeSlot(0, T0); // 45★
+    store.construct('0,0', 'shop', T0); // 30★
+    store.upgradeCell('0,0', T0); // 45★
     const log = readLog(storage);
     const construct = log.find((e) => e.name === 'building_construct');
     const upgrade = log.find((e) => e.name === 'building_upgrade');
@@ -196,7 +196,7 @@ describe('設定とリセット', () => {
     const id = store.save.playerId;
     store.startFocus(25, T0);
     store.completeFocusIfDue(T0 + 25 * MIN);
-    store.construct(0, 'house', T0);
+    store.construct('0,0', 'house', T0);
     store.resetAll(T0);
     expect(store.save.stars).toBe(STARTING_STARS);
     expect(store.save.buildings).toEqual({});

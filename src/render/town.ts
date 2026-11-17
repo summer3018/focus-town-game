@@ -2,8 +2,9 @@
  * 街の描画。
  * 低い解像度（180×210）で描いて拡大することで、ドット絵らしい見た目にしている。
  */
-import { SLOT_IDS } from '../core/config';
-import type { SaveData, SlotId } from '../core/types';
+import { parseCell } from '../core/grid';
+import type { CellKey } from '../core/grid';
+import type { SaveData } from '../core/types';
 import { buildingCount, townLevel } from '../core/buildings';
 import { EffectLayer, drawPixelStar } from './effects';
 import { PALETTE, drawBuilding } from './sprites';
@@ -16,36 +17,39 @@ const TILE_H = 24;
 const ORIGIN_X = 78;
 const ORIGIN_Y = 112;
 
-export interface SlotPos {
-  slot: SlotId;
+export interface CellPos {
+  cell: CellKey;
   x: number;
   y: number;
   depth: number;
 }
 
-export function slotPositions(): SlotPos[] {
-  return SLOT_IDS.map((slot) => {
-    const col = slot % 3;
-    const row = Math.floor(slot / 3);
-    return {
-      slot,
-      x: ORIGIN_X + (col - row) * (TILE_W / 2),
-      y: ORIGIN_Y + (col + row) * (TILE_H / 2),
-      depth: col + row,
-    };
-  });
+/** 区画の座標 → 画面上の論理座標（ひし形の中心） */
+export function cellPositions(cells: CellKey[]): CellPos[] {
+  const out: CellPos[] = [];
+  for (const cell of cells) {
+    const p = parseCell(cell);
+    if (!p) continue;
+    out.push({
+      cell,
+      x: ORIGIN_X + (p.x - p.y) * (TILE_W / 2),
+      y: ORIGIN_Y + (p.x + p.y) * (TILE_H / 2),
+      depth: p.x + p.y,
+    });
+  }
+  return out;
 }
 
 /** 論理座標が、どの区画の上にあるか */
-export function slotAt(lx: number, ly: number): SlotId | null {
-  let found: SlotId | null = null;
-  let bestDepth = -1;
-  for (const p of slotPositions()) {
+export function cellAt(cells: CellKey[], lx: number, ly: number): CellKey | null {
+  let found: CellKey | null = null;
+  let bestDepth = -Infinity;
+  for (const p of cellPositions(cells)) {
     const dx = Math.abs(lx - p.x) / (TILE_W / 2);
     const dy = Math.abs(ly - p.y) / (TILE_H / 2);
     if (dx + dy <= 1 && p.depth >= bestDepth) {
       bestDepth = p.depth;
-      found = p.slot;
+      found = p.cell;
     }
   }
   return found;
@@ -69,9 +73,9 @@ export class TownRenderer {
   private scale = 1;
   private offsetX = 0;
   private offsetY = 0;
-  selectedSlot: SlotId | null = null;
+  selectedCell: CellKey | null = null;
   /** 建設・強化の直後に、その区画だけ一瞬大きくする */
-  private popAnim = new Map<SlotId, { start: number; kind: 'build' | 'upgrade' }>();
+  private popAnim = new Map<CellKey, { start: number; kind: 'build' | 'upgrade' }>();
   private getSave: () => SaveData;
 
   constructor(canvas: HTMLCanvasElement, getSave: () => SaveData) {
@@ -105,20 +109,20 @@ export class TownRenderer {
     return { x: (px - this.offsetX) / this.scale, y: (py - this.offsetY) / this.scale };
   }
 
-  hitSlot(clientX: number, clientY: number): SlotId | null {
+  hitCell(clientX: number, clientY: number): CellKey | null {
     const { x, y } = this.toLogical(clientX, clientY);
-    return slotAt(x, y);
+    return cellAt(this.getSave().land, x, y);
   }
 
-  markBuilt(slot: SlotId, now = performance.now()): void {
-    this.popAnim.set(slot, { start: now, kind: 'build' });
-    const p = slotPositions().find((s) => s.slot === slot);
+  markBuilt(cell: CellKey, now = performance.now()): void {
+    this.popAnim.set(cell, { start: now, kind: 'build' });
+    const p = cellPositions([cell])[0];
     if (p) this.effects.burstDust(p.x, p.y, now);
   }
 
-  markUpgraded(slot: SlotId, now = performance.now()): void {
-    this.popAnim.set(slot, { start: now, kind: 'upgrade' });
-    const p = slotPositions().find((s) => s.slot === slot);
+  markUpgraded(cell: CellKey, now = performance.now()): void {
+    this.popAnim.set(cell, { start: now, kind: 'upgrade' });
+    const p = cellPositions([cell])[0];
     if (p) this.effects.burstSparkle(p.x, p.y, now);
   }
 
@@ -231,18 +235,18 @@ export class TownRenderer {
   }
 
   private drawTiles(ctx: CanvasRenderingContext2D, save: SaveData, t: number): void {
-    const positions = slotPositions().sort((a, b) => a.depth - b.depth || a.y - b.y);
+    const positions = cellPositions(save.land).sort((a, b) => a.depth - b.depth || a.y - b.y);
 
     // 先に全区画の地面を描く
     for (const p of positions) {
-      const b = save.buildings[p.slot];
+      const b = save.buildings[p.cell];
       ctx.fillStyle = b ? PALETTE.grassDark : 'rgba(255,255,255,0.22)';
       diamond(ctx, p.x, p.y, TILE_W / 2 - 1.5, TILE_H / 2 - 1);
       ctx.fill();
 
       if (!b) {
-        ctx.strokeStyle = this.selectedSlot === p.slot ? '#ffffff' : 'rgba(255,255,255,0.75)';
-        ctx.lineWidth = this.selectedSlot === p.slot ? 1.6 : 1;
+        ctx.strokeStyle = this.selectedCell === p.cell ? '#ffffff' : 'rgba(255,255,255,0.75)';
+        ctx.lineWidth = this.selectedCell === p.cell ? 1.6 : 1;
         ctx.setLineDash([3, 3]);
         ctx.lineDashOffset = -((t / 70) % 6);
         diamond(ctx, p.x, p.y, TILE_W / 2 - 2, TILE_H / 2 - 1.5);
@@ -255,7 +259,7 @@ export class TownRenderer {
         ctx.fillRect(Math.round(p.x - 3), Math.round(p.y - 1), 7, 2);
         ctx.fillRect(Math.round(p.x - 1), Math.round(p.y - 3), 2, 7);
         ctx.globalAlpha = 1;
-      } else if (this.selectedSlot === p.slot) {
+      } else if (this.selectedCell === p.cell) {
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1.6;
         diamond(ctx, p.x, p.y, TILE_W / 2 - 2, TILE_H / 2 - 1.5);
@@ -265,16 +269,16 @@ export class TownRenderer {
 
     // 奥から手前の順に建物を描く
     for (const p of positions) {
-      const b = save.buildings[p.slot];
+      const b = save.buildings[p.cell];
       if (!b) continue;
-      const anim = this.popAnim.get(p.slot);
+      const anim = this.popAnim.get(p.cell);
       let scale = 1;
       let lift = 0;
       if (anim) {
         const age = t - anim.start;
         const dur = anim.kind === 'build' ? 620 : 760;
         if (age > dur) {
-          this.popAnim.delete(p.slot);
+          this.popAnim.delete(p.cell);
         } else {
           const k = age / dur;
           if (anim.kind === 'build') {

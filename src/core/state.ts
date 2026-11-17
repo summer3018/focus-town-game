@@ -10,7 +10,8 @@ import { claimReward, createSessionId } from './rewards';
 import { createNewSave, loadSave, persistSave, resolveStorage, todayKey } from './storage';
 import type { StorageLike } from './storage';
 import { clampMinutes, createSession, timerView } from './timer';
-import type { BuildingType, LogEventName, RewardResult, SaveData, SlotId, SurveyAnswer } from './types';
+import type { BuildingType, LogEventName, RewardResult, SaveData, SurveyAnswer } from './types';
+import type { CellKey } from './grid';
 
 type Listener = () => void;
 
@@ -109,29 +110,29 @@ export class GameStore {
 
   // ---- 街づくり ----
 
-  construct(slot: SlotId, type: BuildingType, now = Date.now()): boolean {
+  construct(cell: CellKey, type: BuildingType, now = Date.now()): boolean {
     const cost = buildCost(type);
-    const placed = buildAt(this.save, slot, type, now);
+    const placed = buildAt(this.save, cell, type, now);
     if (!placed) return false;
     this.log('building_construct', {
       buildingType: type,
       buildingLevel: 1,
-      slot,
+      cell,
       starsSpent: cost,
     });
     this.commit();
     return true;
   }
 
-  upgradeSlot(slot: SlotId, now = Date.now()): boolean {
-    const before = this.save.buildings[slot];
+  upgradeCell(cell: CellKey, now = Date.now()): boolean {
+    const before = this.save.buildings[cell];
     const cost = before ? upgradeCost(before.type, before.level) : null;
-    const after = upgradeAt(this.save, slot, now);
+    const after = upgradeAt(this.save, cell, now);
     if (!after) return false;
     this.log('building_upgrade', {
       buildingType: after.type,
       buildingLevel: after.level,
-      slot,
+      cell,
       starsSpent: cost ?? 0,
     });
     this.commit();

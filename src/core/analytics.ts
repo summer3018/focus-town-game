@@ -77,7 +77,8 @@ export interface ExportBundle {
     starsEarned: number;
     starsSpent: number;
     starsBalance: number;
-    buildings: { slot: number; type: string; level: number }[];
+    buildings: { cell: string; type: string; level: number }[];
+    landCount: number;
     minigamePlays: number;
     minigameBestScore: number;
     minigameBestCombo: number;
@@ -89,11 +90,11 @@ export interface ExportBundle {
 export function buildExport(save: SaveData, events: LogEvent[], now = Date.now()): ExportBundle {
   const buildings = Object.entries(save.buildings)
     .filter(([, b]) => Boolean(b))
-    .map(([slot, b]) => ({ slot: Number(slot), type: b!.type, level: b!.level }));
+    .map(([cell, b]) => ({ cell, type: b!.type, level: b!.level }));
 
   return {
     app: 'focus-town-game',
-    exportVersion: 1,
+    exportVersion: 2,
     exportedAt: new Date(now).toISOString(),
     note: 'この端末のlocalStorageに保存された記録です。個人情報・位置情報・連絡先・広告IDは含みません。',
     player: {
@@ -110,6 +111,7 @@ export function buildExport(save: SaveData, events: LogEvent[], now = Date.now()
       starsSpent: save.totalSpentStars,
       starsBalance: save.stars,
       buildings,
+      landCount: save.land.length,
       minigamePlays: save.minigamePlays,
       minigameBestScore: save.minigameBestScore,
       minigameBestCombo: save.minigameBestCombo,

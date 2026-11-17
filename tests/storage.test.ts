@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STARTING_STARS, STORAGE_KEYS } from '../src/core/config';
+import { INITIAL_CELLS, STARTING_STARS, STORAGE_KEYS } from '../src/core/config';
 import { createMemoryStorage, createNewSave, loadSave, normalizeSave, persistSave, todayKey } from '../src/core/storage';
 
 const T0 = new Date('2026-11-17T09:00:00+09:00').getTime();
@@ -16,6 +16,55 @@ describe('開始時スター', () => {
   it('既存セーブの stars: 0 は 30 に上書きされない', () => {
     const existing = { ...createNewSave(T0), stars: 0 };
     expect(normalizeSave(existing, T0).stars).toBe(0);
+  });
+});
+
+describe('保存データ v2（座標の区画）', () => {
+  const house2 = { type: 'house', level: 2, builtAt: T0, upgradedAt: T0 };
+  const park1 = { type: 'park', level: 1, builtAt: T0, upgradedAt: T0 };
+
+  it('新規セーブは最初の6区画を持ち、まだ土地を買っていない', () => {
+    const s = createNewSave(T0);
+    expect(s.version).toBe(2);
+    expect([...s.land].sort()).toEqual([...INITIAL_CELLS].sort());
+    expect(s.landPurchases).toBe(0);
+  });
+
+  it('v1 のセーブを v2 に移す（位置・レベル・星を保つ）', () => {
+    const s = normalizeSave({ version: 1, stars: 77, buildings: { '0': house2, '4': park1 } }, T0);
+    expect(s.version).toBe(2);
+    expect([...s.land].sort()).toEqual([...INITIAL_CELLS].sort());
+    expect(s.buildings['0,0']?.level).toBe(2);
+    expect(s.buildings['1,1']?.type).toBe('park');
+    expect(Object.keys(s.buildings).sort()).toEqual(['0,0', '1,1']);
+    expect(s.stars).toBe(77);
+    expect(s.landPurchases).toBe(0);
+  });
+
+  it('v2 は normalize を2回通しても同じ', () => {
+    const once = normalizeSave({ version: 1, stars: 77, buildings: { '0': house2, '4': park1 } }, T0);
+    const twice = normalizeSave(JSON.parse(JSON.stringify(once)), T0);
+    expect(twice).toEqual(once);
+  });
+
+  it('壊れた土地データを捨て、持っていない土地の上の建物も捨てる', () => {
+    const s = normalizeSave(
+      { version: 2, land: ['0,0', '1.5,2', 'a,b', '0,0', '3,0', 7], landPurchases: 1, buildings: { '9,9': house2, '3,0': park1 } },
+      T0,
+    );
+    expect(s.land).not.toContain('1.5,2');
+    expect(s.land).not.toContain('a,b');
+    expect(new Set(s.land).size).toBe(s.land.length);
+    for (const c of INITIAL_CELLS) expect(s.land).toContain(c);
+    expect(s.land).toContain('3,0');
+    expect(s.buildings['9,9']).toBeUndefined();
+    expect(s.buildings['3,0']?.type).toBe('park');
+    expect(s.landPurchases).toBe(1);
+  });
+
+  it('land が空でも最初の6区画は残る', () => {
+    const s = normalizeSave({ version: 2, land: [], buildings: {} }, T0);
+    expect([...s.land].sort()).toEqual([...INITIAL_CELLS].sort());
   });
 });
 
@@ -65,11 +114,11 @@ describe('normalizeSave', () => {
       },
       T0,
     );
-    expect(s.buildings[0]?.level).toBe(3);
-    expect(s.buildings[1]).toBeUndefined();
-    expect(s.buildings[2]?.level).toBe(1);
-    expect(s.buildings[3]).toBeUndefined();
-    expect(Object.keys(s.buildings)).toEqual(['0', '2']);
+    expect(s.buildings['0,0']?.level).toBe(3);
+    expect(s.buildings['1,0']).toBeUndefined();
+    expect(s.buildings['2,0']?.level).toBe(1);
+    expect(s.buildings['0,1']).toBeUndefined();
+    expect(Object.keys(s.buildings)).toEqual(['0,0', '2,0']);
   });
 
   it('壊れたセッションは捨てる', () => {
@@ -105,13 +154,13 @@ describe('loadSave / persistSave', () => {
     const storage = createMemoryStorage();
     const save = createNewSave(T0);
     save.stars = 70;
-    save.buildings[0] = { type: 'shop', level: 2, builtAt: T0, upgradedAt: T0 };
+    save.buildings['0,0'] = { type: 'shop', level: 2, builtAt: T0, upgradedAt: T0 };
     persistSave(storage, save);
 
     const loaded = loadSave(storage, T0 + 1000);
     expect(loaded.isNew).toBe(false);
     expect(loaded.save.stars).toBe(70);
-    expect(loaded.save.buildings[0]?.type).toBe('shop');
+    expect(loaded.save.buildings['0,0']?.type).toBe('shop');
     expect(loaded.save.playerId).toBe(save.playerId);
   });
 
@@ -128,6 +177,18 @@ describe('loadSave / persistSave', () => {
     expect(loaded.save.stars).toBe(STARTING_STARS); // 作り直したデータは新規扱い
     expect(loaded.wasRepaired).toBe(true);
     expect(storage.getItem(STORAGE_KEYS.save + ':broken')).toBe('{壊れている');
+  });
+
+  it('正しい v1 のセーブは、移行しても修復扱いにならない', () => {
+    const storage = createMemoryStorage();
+    const v1: Record<string, unknown> = { ...createNewSave(T0), version: 1 };
+    delete v1.land;
+    delete v1.landPurchases;
+    v1.buildings = { '0': { type: 'house', level: 2, builtAt: T0, upgradedAt: T0 } };
+    storage.setItem(STORAGE_KEYS.save, JSON.stringify(v1));
+    const loaded = loadSave(storage, T0);
+    expect(loaded.save.buildings['0,0']?.level).toBe(2);
+    expect(loaded.wasRepaired).toBe(false);
   });
 
   it('一部が欠けたデータは修復フラグが立つ', () => {

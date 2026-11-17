@@ -2,14 +2,15 @@
  * ゲームバランスの設定値。
  * 市場検証中に調整する数字は、すべてこのファイルに集めてある。
  */
-import type { BuildingType, SlotId } from './types';
+import type { CellKey } from './grid';
+import type { BuildingType } from './types';
 
 export const STORAGE_KEYS = {
   save: 'focus-town:save:v1',
   log: 'focus-town:log:v1',
 } as const;
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 /** 集中時間のプリセット（分）。先頭が初期選択 */
 export const FOCUS_PRESETS = [5, 15, 25] as const;
@@ -36,8 +37,8 @@ export const MAX_CLAIMED_HISTORY = 100;
 /** プレイログの保存上限（これを超えたら古いものから捨てる） */
 export const LOG_LIMIT = 500;
 
-/** 街の区画数 */
-export const SLOT_IDS: SlotId[] = [0, 1, 2, 3, 4, 5];
+/** 最初から持っている区画（横3×縦2。v1 の区画番号 0〜5 と同じ並び） */
+export const INITIAL_CELLS: CellKey[] = ['0,0', '1,0', '2,0', '0,1', '1,1', '2,1'];
 
 export interface BuildingSpec {
   type: BuildingType;

@@ -2,8 +2,10 @@
  * localStorage への保存と読み込み。
  * 壊れたデータ・足りないデータが来ても、可能な範囲で直して必ず SaveData を返す。
  */
-import { BUILDINGS, MAX_CLAIMED_HISTORY, SAVE_VERSION, SLOT_IDS, STARTING_STARS, STORAGE_KEYS } from './config';
-import type { BuildingType, FocusSession, PlacedBuilding, SaveData, SlotId, SurveyAnswer } from './types';
+import { BUILDINGS, INITIAL_CELLS, MAX_CLAIMED_HISTORY, SAVE_VERSION, STARTING_STARS, STORAGE_KEYS } from './config';
+import { cellKey, parseCell, slotToCell } from './grid';
+import type { CellKey } from './grid';
+import type { BuildingType, FocusSession, PlacedBuilding, SaveData, SurveyAnswer } from './types';
 
 const BUILDING_TYPES = Object.keys(BUILDINGS) as BuildingType[];
 
@@ -74,6 +76,8 @@ export function createNewSave(now: number, rand: () => number = Math.random): Sa
     stars: STARTING_STARS,
     totalEarnedStars: 0,
     totalSpentStars: 0,
+    land: [...INITIAL_CELLS],
+    landPurchases: 0,
     focusCount: 0,
     focusCancelCount: 0,
     totalFocusMs: 0,
@@ -143,17 +147,40 @@ function normalizeSurvey(raw: unknown): SurveyAnswer | null {
   };
 }
 
+function canonicalCell(raw: unknown): CellKey | null {
+  if (typeof raw !== 'string') return null;
+  const p = parseCell(raw);
+  return p ? cellKey(p.x, p.y) : null;
+}
+
+/** 土地の一覧を検証し、重複を除き、最初の6区画を必ず含める */
+function normalizeLand(raw: unknown): CellKey[] {
+  const out: CellKey[] = [...INITIAL_CELLS];
+  if (Array.isArray(raw)) {
+    for (const v of raw) {
+      const key = canonicalCell(v);
+      if (key && !out.includes(key)) out.push(key);
+    }
+  }
+  return out;
+}
+
 /** どんな入力でも壊れない SaveData に直す */
 export function normalizeSave(raw: unknown, now: number, rand: () => number = Math.random): SaveData {
   const base = createNewSave(now, rand);
   if (!raw || typeof raw !== 'object') return base;
   const o = raw as Record<string, unknown>;
 
-  const buildings: Partial<Record<SlotId, PlacedBuilding>> = {};
+  const land = normalizeLand(o.land);
+  const isV1 = num(o.version, 1) < 2 || !Array.isArray(o.land);
   const rawBuildings = (o.buildings && typeof o.buildings === 'object' ? o.buildings : {}) as Record<string, unknown>;
-  for (const slot of SLOT_IDS) {
-    const b = normalizeBuilding(rawBuildings[String(slot)], now);
-    if (b) buildings[slot] = b;
+  const buildings: Record<CellKey, PlacedBuilding> = {};
+  for (const [rawKey, rawValue] of Object.entries(rawBuildings)) {
+    // v1 は区画番号 "0"〜"5"、v2 は座標 "x,y"
+    const key = isV1 ? (/^[0-5]$/.test(rawKey) ? slotToCell(Number(rawKey)) : null) : canonicalCell(rawKey);
+    if (!key || !land.includes(key)) continue;
+    const b = normalizeBuilding(rawValue, now);
+    if (b) buildings[key] = b;
   }
 
   const claimed = Array.isArray(o.claimedSessionIds)
@@ -189,6 +216,8 @@ export function normalizeSave(raw: unknown, now: number, rand: () => number = Ma
     stars: num(o.stars, 0),
     totalEarnedStars: num(o.totalEarnedStars, 0),
     totalSpentStars: num(o.totalSpentStars, 0),
+    land,
+    landPurchases: isV1 ? 0 : num(o.landPurchases, 0),
     focusCount: num(o.focusCount, 0),
     focusCancelCount: num(o.focusCancelCount, 0),
     totalFocusMs: num(o.totalFocusMs, 0),
@@ -209,6 +238,32 @@ export function normalizeSave(raw: unknown, now: number, rand: () => number = Ma
   };
 }
 
+/**
+ * v1 のセーブを、中身を直さずに v2 の形へ書き換える（修復かどうかの判定用）。
+ * 区画番号 "0"〜"5" を座標に移し、最初の6区画を持たせる。それ以外のキーはそのまま残す。
+ */
+export function migrateV1Shape(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  const o = raw as Record<string, unknown>;
+  if (num(o.version, 1) >= 2 && Array.isArray(o.land)) return raw;
+  const buildings: Record<string, unknown> = {};
+  if (o.buildings && typeof o.buildings === 'object') {
+    for (const [k, v] of Object.entries(o.buildings as Record<string, unknown>)) {
+      buildings[/^[0-5]$/.test(k) ? slotToCell(Number(k)) : k] = v;
+    }
+  }
+  return { ...o, version: SAVE_VERSION, land: [...INITIAL_CELLS], landPurchases: 0, buildings };
+}
+
+/** キーの並び順に左右されない JSON 文字列 */
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_k, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
+}
+
 export interface LoadResult {
   save: SaveData;
   wasRepaired: boolean;
@@ -223,7 +278,7 @@ export function loadSave(storage: StorageLike, now: number): LoadResult {
   try {
     const parsed = JSON.parse(rawText);
     const save = normalizeSave(parsed, now);
-    const wasRepaired = JSON.stringify(parsed) !== JSON.stringify(save);
+    const wasRepaired = stableStringify(migrateV1Shape(parsed)) !== stableStringify(save);
     return { save, wasRepaired, isNew: false };
   } catch {
     // 壊れていたら作り直す。元データは消さずに退避しておく。

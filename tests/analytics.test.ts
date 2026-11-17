@@ -55,13 +55,13 @@ describe('buildExport', () => {
     save.focusCount = 3;
     save.totalFocusMs = 45 * 60_000;
     save.minigameBestScore = 620;
-    save.buildings[0] = { type: 'house', level: 2, builtAt: T0, upgradedAt: T0 };
+    save.buildings['0,0'] = { type: 'house', level: 2, builtAt: T0, upgradedAt: T0 };
 
     const bundle = buildExport(save, [], T0);
     expect(bundle.app).toBe('focus-town-game');
     expect(bundle.summary.totalFocusMinutes).toBe(45);
     expect(bundle.summary.starsBalance).toBe(40);
-    expect(bundle.summary.buildings).toEqual([{ slot: 0, type: 'house', level: 2 }]);
+    expect(bundle.summary.buildings).toEqual([{ cell: '0,0', type: 'house', level: 2 }]);
     expect(bundle.player.id).toBe(save.playerId);
 
     const text = JSON.stringify(bundle);
