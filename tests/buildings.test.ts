@@ -12,7 +12,7 @@ import {
 } from '../src/core/buildings';
 import { INITIAL_CELLS } from '../src/core/config';
 import { createNewSave } from '../src/core/storage';
-import type { SaveData } from '../src/core/types';
+import type { BuildingType, SaveData } from '../src/core/types';
 
 const T0 = new Date('2026-11-17T09:00:00+09:00').getTime();
 
@@ -145,3 +145,23 @@ describe('節目による解放', () => {
   });
 });
 
+
+describe('新しい建物の値段', () => {
+  it('設計書の表どおり', () => {
+    const table: [BuildingType, number, number, number][] = [
+      ['field', 25, 35, 70],
+      ['postOffice', 40, 60, 120],
+      ['school', 60, 90, 180],
+      ['station', 80, 120, 240],
+      ['shoppingStreet', 100, 150, 300],
+      ['office', 140, 210, 420],
+      ['radioTower', 200, 300, 600],
+    ];
+    for (const [type, b, u1, u2] of table) {
+      expect(buildCost(type)).toBe(b);
+      expect(upgradeCost(type, 1)).toBe(u1);
+      expect(upgradeCost(type, 2)).toBe(u2);
+      expect(upgradeCost(type, 3)).toBeNull();
+    }
+  });
+});
