@@ -2,7 +2,7 @@
  * localStorage への保存と読み込み。
  * 壊れたデータ・足りないデータが来ても、可能な範囲で直して必ず SaveData を返す。
  */
-import { BUILDINGS, MAX_CLAIMED_HISTORY, SAVE_VERSION, SLOT_IDS, STORAGE_KEYS } from './config';
+import { BUILDINGS, MAX_CLAIMED_HISTORY, SAVE_VERSION, SLOT_IDS, STARTING_STARS, STORAGE_KEYS } from './config';
 import type { BuildingType, FocusSession, PlacedBuilding, SaveData, SlotId, SurveyAnswer } from './types';
 
 const BUILDING_TYPES = Object.keys(BUILDINGS) as BuildingType[];
@@ -71,7 +71,7 @@ export function createNewSave(now: number, rand: () => number = Math.random): Sa
     firstSeenAt: now,
     lastPlayedAt: now,
     visitDays: [todayKey(now)],
-    stars: 0,
+    stars: STARTING_STARS,
     totalEarnedStars: 0,
     totalSpentStars: 0,
     focusCount: 0,

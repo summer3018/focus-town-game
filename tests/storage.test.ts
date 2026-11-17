@@ -1,13 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { STORAGE_KEYS } from '../src/core/config';
+import { STARTING_STARS, STORAGE_KEYS } from '../src/core/config';
 import { createMemoryStorage, createNewSave, loadSave, normalizeSave, persistSave, todayKey } from '../src/core/storage';
 
 const T0 = new Date('2026-11-17T09:00:00+09:00').getTime();
 
+describe('開始時スター', () => {
+  it('新規セーブは STARTING_STARS(30) で始まる', () => {
+    const s = createNewSave(T0);
+    expect(STARTING_STARS).toBe(30);
+    expect(s.stars).toBe(30);
+    expect(s.totalEarnedStars).toBe(0);
+    expect(s.totalSpentStars).toBe(0);
+  });
+
+  it('既存セーブの stars: 0 は 30 に上書きされない', () => {
+    const existing = { ...createNewSave(T0), stars: 0 };
+    expect(normalizeSave(existing, T0).stars).toBe(0);
+  });
+});
+
 describe('normalizeSave', () => {
   it('null でも初期データを返す', () => {
     const s = normalizeSave(null, T0);
-    expect(s.stars).toBe(0);
+    expect(s.stars).toBe(30);
     expect(s.buildings).toEqual({});
     expect(s.playerId).toMatch(/^p_/);
   });
@@ -110,7 +125,7 @@ describe('loadSave / persistSave', () => {
     const storage = createMemoryStorage();
     storage.setItem(STORAGE_KEYS.save, '{壊れている');
     const loaded = loadSave(storage, T0);
-    expect(loaded.save.stars).toBe(0);
+    expect(loaded.save.stars).toBe(STARTING_STARS); // 作り直したデータは新規扱い
     expect(loaded.wasRepaired).toBe(true);
     expect(storage.getItem(STORAGE_KEYS.save + ':broken')).toBe('{壊れている');
   });

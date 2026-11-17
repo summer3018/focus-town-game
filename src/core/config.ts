@@ -27,6 +27,9 @@ export const PRESET_REWARDS: Record<number, number> = {
 /** プリセット以外（カスタム）の1分あたりの獲得スター */
 export const STARS_PER_MINUTE = 2;
 
+/** 新規プレイヤーが最初に持っているスター（最初の1軒をすぐ建てられる量） */
+export const STARTING_STARS = 30;
+
 /** 報酬を受け取り済みのセッションIDを保持する上限 */
 export const MAX_CLAIMED_HISTORY = 100;
 
@@ -140,6 +143,6 @@ export const ONBOARDING_STEPS = [
   },
   {
     title: 'スターで街を育てる',
-    body: '空いている区画をタップして、家・お店・公園を建てましょう。レベルを上げると見た目が変わります。',
+    body: '空いている区画をタップして、家・お店・公園を建てましょう。はじめに30★をプレゼント。さっそく1軒建ててみましょう。レベルを上げると見た目が変わります。',
   },
 ] as const;

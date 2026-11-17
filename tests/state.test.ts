@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { STARTING_STARS } from '../src/core/config';
 import { GameStore } from '../src/core/state';
 import { readLog } from '../src/core/analytics';
 import { createMemoryStorage, persistSave } from '../src/core/storage';
@@ -7,8 +8,12 @@ import type { StorageLike } from '../src/core/storage';
 const T0 = new Date('2026-11-17T09:00:00+09:00').getTime();
 const MIN = 60_000;
 
+/** 残高0★から始める（開始時スターの影響を受けずに報酬・建設の増減を確かめるため） */
 function freshStore(storage: StorageLike = createMemoryStorage()): GameStore {
-  return new GameStore(storage, T0);
+  const store = new GameStore(storage, T0);
+  store.save.stars = 0;
+  persistSave(storage, store.save);
+  return store;
 }
 
 describe('集中セッションの流れ', () => {
@@ -193,7 +198,7 @@ describe('設定とリセット', () => {
     store.completeFocusIfDue(T0 + 25 * MIN);
     store.construct(0, 'house', T0);
     store.resetAll(T0);
-    expect(store.save.stars).toBe(0);
+    expect(store.save.stars).toBe(STARTING_STARS);
     expect(store.save.buildings).toEqual({});
     expect(store.save.focusCount).toBe(0);
     expect(store.save.playerId).toBe(id);

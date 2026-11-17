@@ -32,6 +32,7 @@ describe('claimReward', () => {
 
   beforeEach(() => {
     save = createNewSave(T0);
+    save.stars = 0; // 開始時スターを除いて、報酬の増え方だけを見る
   });
 
   it('完了していれば付与される', () => {
