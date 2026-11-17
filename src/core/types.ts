@@ -1,6 +1,16 @@
 /** ゲーム全体で使う型定義 */
 
-export type BuildingType = 'house' | 'shop' | 'park';
+export type BuildingType =
+  | 'house'
+  | 'shop'
+  | 'park'
+  | 'field'
+  | 'postOffice'
+  | 'school'
+  | 'station'
+  | 'shoppingStreet'
+  | 'office'
+  | 'radioTower';
 
 import type { CellKey } from './grid';
 
@@ -108,7 +118,8 @@ export type LogEventName =
   | 'building_upgrade'
   | 'minigame_start'
   | 'minigame_complete'
-  | 'return_visit';
+  | 'return_visit'
+  | 'land_purchase';
 
 export interface LogEvent {
   /** 発生時刻（epoch ms） */
@@ -126,6 +137,7 @@ export interface LogEvent {
   buildingType?: BuildingType;
   buildingLevel?: number;
   cell?: CellKey;
+  landCount?: number;
   score?: number;
   combo?: number;
   dayIndex?: number;

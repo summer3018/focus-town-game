@@ -1,6 +1,7 @@
 /** 建物の建設・強化のルール（純粋関数） */
 import { BUILDINGS } from './config';
 import type { CellKey } from './grid';
+import { isUnlocked, townStage } from './land';
 import type { BuildingType, PlacedBuilding, SaveData } from './types';
 
 export function getBuilding(save: SaveData, cell: CellKey): PlacedBuilding | null {
@@ -20,6 +21,7 @@ export function upgradeCost(type: BuildingType, currentLevel: number): number | 
 
 export function canBuild(save: SaveData, cell: CellKey, type: BuildingType): boolean {
   if (!save.land.includes(cell)) return false;
+  if (!isUnlocked(save, type)) return false;
   if (getBuilding(save, cell)) return false;
   return save.stars >= buildCost(type);
 }
@@ -65,13 +67,7 @@ export function buildingCount(save: SaveData): number {
   return Object.values(save.buildings).filter(Boolean).length;
 }
 
-/** 街のにぎやかさを一言で表す */
+/** 街の呼び名（区画の数で決まる） */
 export function townTitle(save: SaveData): string {
-  const level = townLevel(save);
-  if (level === 0) return 'まだ何もない土地';
-  if (level <= 2) return '小さな集落';
-  if (level <= 5) return '芽が出はじめた街';
-  if (level <= 9) return 'にぎやかになってきた街';
-  if (level <= 14) return '人が集まる街';
-  return 'みんなの街';
+  return townStage(save.land.length).name;
 }

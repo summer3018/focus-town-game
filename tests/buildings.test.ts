@@ -117,18 +117,31 @@ describe('街の規模', () => {
   it('レベルの合計と呼び名', () => {
     const save = createNewSave(T0);
     expect(townLevel(save)).toBe(0);
-    expect(townTitle(save)).toBe('まだ何もない土地');
 
     save.stars = 1000;
     build(save, '0,0', 'house', T0);
     build(save, '1,0', 'shop', T0);
     expect(townLevel(save)).toBe(2);
-    expect(townTitle(save)).toBe('小さな集落');
 
     upgrade(save, '0,0', T0);
     upgrade(save, '0,0', T0);
     upgrade(save, '1,0', T0);
     expect(townLevel(save)).toBe(5);
-    expect(townTitle(save)).toBe('芽が出はじめた街');
   });
 });
+
+describe('節目による解放', () => {
+  it('解放前の建物は、星があっても建てられない', () => {
+    const save = createNewSave(T0);
+    save.stars = 1000;
+    expect(canBuild(save, '0,0', 'field')).toBe(false);
+    expect(build(save, '0,0', 'field', T0)).toBeNull();
+    expect(save.stars).toBe(1000);
+  });
+
+  it('townTitle は区画の数の呼び名', () => {
+    const save = createNewSave(T0);
+    expect(townTitle(save)).toBe('小さな村');
+  });
+});
+

@@ -6,6 +6,8 @@ import { appendEvent, buildExport, clearLog, readLog } from './analytics';
 import type { LogPayload } from './analytics';
 import { build as buildAt, buildCost, upgrade as upgradeAt, upgradeCost } from './buildings';
 import { CUSTOM_MINUTES } from './config';
+import type { TownStageSpec } from './config';
+import { buyLand, stageReachedBy } from './land';
 import { claimReward, createSessionId } from './rewards';
 import { createNewSave, loadSave, persistSave, resolveStorage, todayKey } from './storage';
 import type { StorageLike } from './storage';
@@ -137,6 +139,17 @@ export class GameStore {
     });
     this.commit();
     return true;
+  }
+
+  /** 土地を買う。成功なら値段と、越えた節目（なければ null） */
+  purchaseLand(cell: CellKey): { price: number; stage: TownStageSpec | null } | null {
+    const before = this.save.land.length;
+    const r = buyLand(this.save, cell);
+    if (!r) return null;
+    const after = this.save.land.length;
+    this.log('land_purchase', { starsSpent: r.price, cell, landCount: after });
+    this.commit();
+    return { price: r.price, stage: stageReachedBy(before, after) };
   }
 
   // ---- ミニゲーム ----

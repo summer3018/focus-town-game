@@ -102,9 +102,149 @@ export const BUILDINGS: Record<BuildingType, BuildingSpec> = {
     accent: '#5fa86b',
     icon: '🌳',
   },
+  field: {
+    type: 'field',
+    name: '田んぼ・畑',
+    summary: '村の食べものを育てる。季節の色が街に出る。',
+    buildCost: 25,
+    upgradeCosts: [35, 70],
+    maxLevel: 3,
+    levelNotes: [
+      '小さな畑。苗がならぶ。',
+      '田んぼに水が張られ、かかしが立つ。',
+      '実りの田んぼ。小屋と稲架がならぶ。',
+    ],
+    accent: '#9cbf5a',
+    icon: '🌾',
+  },
+  postOffice: {
+    type: 'postOffice',
+    name: '郵便局',
+    summary: '手紙と荷物が行き来する。町の入口になる。',
+    buildCost: 40,
+    upgradeCosts: [60, 120],
+    maxLevel: 3,
+    levelNotes: [
+      '赤いポストのある小さな郵便局。',
+      '看板と窓口が増え、自転車がとまる。',
+      '二階建ての郵便局。配達のバイクが走る。',
+    ],
+    accent: '#d9534f',
+    icon: '📮',
+  },
+  school: {
+    type: 'school',
+    name: '学校',
+    summary: '子どもたちが集まる。町がにぎやかになる。',
+    buildCost: 60,
+    upgradeCosts: [90, 180],
+    maxLevel: 3,
+    levelNotes: [
+      '木造の小さな校舎。',
+      '校庭と鉄棒ができる。',
+      '時計のついた大きな校舎。',
+    ],
+    accent: '#e0b25c',
+    icon: '🏫',
+  },
+  station: {
+    type: 'station',
+    name: '駅',
+    summary: '人が出入りする。町が外とつながる。',
+    buildCost: 80,
+    upgradeCosts: [120, 240],
+    maxLevel: 3,
+    levelNotes: [
+      '小さな無人駅。ホームがひとつ。',
+      '駅舎ができて、電車がとまる。',
+      '屋根つきの大きな駅。人が行き交う。',
+    ],
+    accent: '#6b8fb8',
+    icon: '🚉',
+  },
+  shoppingStreet: {
+    type: 'shoppingStreet',
+    name: '商店街',
+    summary: 'お店がならび、町の顔になる。',
+    buildCost: 100,
+    upgradeCosts: [150, 300],
+    maxLevel: 3,
+    levelNotes: [
+      'アーケードの入口ができる。',
+      'のぼりと看板が増える。',
+      '明かりのともる、にぎやかな商店街。',
+    ],
+    accent: '#e58a4e',
+    icon: '🏬',
+  },
+  office: {
+    type: 'office',
+    name: 'ビル',
+    summary: '働く人が集まる。街が都会になる。',
+    buildCost: 140,
+    upgradeCosts: [210, 420],
+    maxLevel: 3,
+    levelNotes: [
+      '四階建ての小さなビル。',
+      '窓の明かりが増えた中くらいのビル。',
+      '屋上に看板のある高いビル。',
+    ],
+    accent: '#8a9bb0',
+    icon: '🏢',
+  },
+  radioTower: {
+    type: 'radioTower',
+    name: '電波塔',
+    summary: '街のシンボル。遠くからも見える。',
+    buildCost: 200,
+    upgradeCosts: [300, 600],
+    maxLevel: 3,
+    levelNotes: [
+      '鉄骨の小さな塔。',
+      '高くなり、赤と白にぬられる。',
+      '展望台つきの大きな電波塔。夜は光る。',
+    ],
+    accent: '#e06c5a',
+    icon: '🗼',
+  },
 };
 
-export const BUILDING_ORDER: BuildingType[] = ['house', 'shop', 'park'];
+/** 解放される順（建設画面の並び順） */
+export const BUILDING_ORDER: BuildingType[] = [
+  'house',
+  'shop',
+  'park',
+  'field',
+  'postOffice',
+  'school',
+  'station',
+  'shoppingStreet',
+  'office',
+  'radioTower',
+];
+
+/** 土地の値段 = min(max, base + step × これまでに買った数) */
+export const LAND_COST = { base: 15, step: 5, max: 60 } as const;
+
+export interface TownStageSpec {
+  /** この区画の数以上で到達 */
+  at: number;
+  name: string;
+  /** この節目で新しく建てられるようになる建物 */
+  unlocks: BuildingType[];
+}
+
+/** 街の節目（at の昇順）。区画の数で呼び名と建てられる建物が増える */
+export const TOWN_STAGES: TownStageSpec[] = [
+  { at: 6, name: '小さな村', unlocks: ['house', 'shop', 'park'] },
+  { at: 12, name: '村', unlocks: ['field'] },
+  { at: 20, name: '小さな町', unlocks: ['postOffice'] },
+  { at: 30, name: '町', unlocks: ['school'] },
+  { at: 45, name: 'にぎやかな町', unlocks: ['station'] },
+  { at: 65, name: '市', unlocks: ['shoppingStreet'] },
+  { at: 90, name: '都市', unlocks: ['office'] },
+  { at: 120, name: '大都市', unlocks: ['radioTower'] },
+];
 
 /** ミニゲーム「スターキャッチ」の設定 */
 export const MINIGAME = {

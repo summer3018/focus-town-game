@@ -225,3 +225,21 @@ describe('壊れた保存データからの復帰', () => {
     expect(store.save.stars).toBe(0);
   });
 });
+
+describe('土地の購入', () => {
+  it('purchaseLand は land_purchase を記録し、節目を越えたら知らせる', () => {
+    const storage = createMemoryStorage();
+    const store = new GameStore(storage, T0);
+    store.save.stars = 10_000;
+    const order = ['3,0', '3,1', '-1,0', '-1,1', '0,-1'];
+    for (const c of order) expect(store.purchaseLand(c)?.stage).toBeNull();
+    const r = store.purchaseLand('1,-1');
+    expect(r?.stage?.name).toBe('村');
+    expect(store.save.land).toHaveLength(12);
+    const ev = readLog(storage).filter((e) => e.name === 'land_purchase');
+    expect(ev).toHaveLength(6);
+    expect(ev[0]).toMatchObject({ starsSpent: 15, cell: '3,0', landCount: 7 });
+    expect(store.purchaseLand('9,9')).toBeNull();
+  });
+});
+
