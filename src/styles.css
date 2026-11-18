@@ -312,6 +312,12 @@ body {
   display: block;
   image-rendering: pixelated;
   cursor: pointer;
+  /* 指でのスクロール・拡大はゲームが自分で扱う */
+  touch-action: none;
+}
+
+.option--locked {
+  opacity: 0.55;
 }
 
 .town__label {

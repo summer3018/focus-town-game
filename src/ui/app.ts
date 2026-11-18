@@ -8,6 +8,8 @@ import { GameStore } from '../core/state';
 import { clampMinutes, formatClock, formatDuration, formatTotalDuration, minutesToMs, timerView } from '../core/timer';
 import type { BuildingType, SurveyAnswer } from '../core/types';
 import type { CellKey } from '../core/grid';
+import { canBuyLand, isUnlocked, landPrice, townStage } from '../core/land';
+import { createGestureTracker } from '../render/gestures';
 import { TownRenderer } from '../render/town';
 import { drawBuildingPreview } from '../render/sprites';
 import { rankFor } from '../core/minigameLogic';
@@ -120,17 +122,22 @@ export class App {
     setText('sheet-stars', save.stars);
     setText('town-title', townTitle(save));
     const count = buildingCount(save);
-    role('town-sub').textContent = count === 0 ? '区画をタップして建てられます' : '建物 ' + count + ' / ' + save.land.length;
+    role('town-sub').textContent = '区画 ' + save.land.length + '・建物 ' + count;
 
     const hint = role('home-hint');
-    if (count === 0 && save.stars < 20) {
-      hint.textContent = 'まずは5分の集中から。20★で最初の建物が建ちます。';
-    } else if (count >= save.land.length) {
-      hint.textContent = '建物をタップするとレベルを上げられます。';
-    } else if (save.stars >= 20) {
+    const hasEmpty = count < save.land.length;
+    const cheapest = Math.min(
+      ...townStage(save.land.length).unlocked.map((type) => buildCost(type)),
+    );
+    const nextLand = landPrice(save.landPurchases);
+    if (hasEmpty && save.stars >= cheapest) {
       hint.textContent = '光っている区画をタップすると建てられます。';
+    } else if (save.stars >= nextLand) {
+      hint.textContent = '街のまわりの売地をタップすると、街を広げられます。';
+    } else if (count === 0) {
+      hint.textContent = 'まずは5分の集中から。' + cheapest + '★で最初の建物が建ちます。';
     } else {
-      hint.textContent = '次の建物まであと ' + Math.max(0, 20 - save.stars) + '★';
+      hint.textContent = '次の土地まであと ' + (nextLand - save.stars) + '★';
     }
 
     if (save.stars !== this.lastStarValue) {
@@ -250,13 +257,131 @@ export class App {
 
   private bindTownTaps(): void {
     const canvas = qs<HTMLCanvasElement>('#townCanvas');
+    const gestures = createGestureTracker();
+    const rectOf = () => canvas.getBoundingClientRect();
+    const apply = (r: ReturnType<typeof gestures.move>) => {
+      if (r.kind === 'pan') this.town.pan(r.dx, r.dy);
+      else if (r.kind === 'pinch') {
+        const rect = rectOf();
+        this.town.pan(r.dx, r.dy);
+        this.town.zoomAtClient(rect.left + r.cx, rect.top + r.cy, r.factor);
+      } else if (r.kind === 'tap') {
+        const rect = rectOf();
+        this.onTownTap(rect.left + r.x, rect.top + r.y);
+      }
+    };
+    const local = (ev: PointerEvent) => {
+      const rect = rectOf();
+      return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+    };
     canvas.addEventListener('pointerdown', (ev) => {
-      const cell = this.town.hitCell(ev.clientX, ev.clientY);
-      if (cell === null) return;
-      this.town.selectedCell = cell;
-      audio.play('tap');
-      this.openSheet(cell);
+      try {
+        canvas.setPointerCapture(ev.pointerId);
+      } catch {
+        /* 取れなくても続ける */
+      }
+      const p = local(ev);
+      apply(gestures.down(ev.pointerId, p.x, p.y, ev.timeStamp));
     });
+    canvas.addEventListener('pointermove', (ev) => {
+      const p = local(ev);
+      apply(gestures.move(ev.pointerId, p.x, p.y, ev.timeStamp));
+    });
+    canvas.addEventListener('pointerup', (ev) => {
+      const p = local(ev);
+      apply(gestures.up(ev.pointerId, p.x, p.y, ev.timeStamp));
+    });
+    canvas.addEventListener('pointercancel', (ev) => {
+      apply(gestures.cancel(ev.pointerId));
+    });
+    canvas.addEventListener(
+      'wheel',
+      (ev) => {
+        ev.preventDefault();
+        this.town.zoomAtClient(ev.clientX, ev.clientY, Math.exp(-ev.deltaY / 400));
+      },
+      { passive: false },
+    );
+  }
+
+  private onTownTap(clientX: number, clientY: number): void {
+    if (this.town.isTapTooSmall()) {
+      this.town.zoomToTap(clientX, clientY);
+      return;
+    }
+    const cell = this.town.hitCell(clientX, clientY);
+    if (cell === null) return;
+    this.town.selectedCell = cell;
+    audio.play('tap');
+    if (this.store.save.land.includes(cell)) this.openSheet(cell);
+    else this.openLandSheet(cell);
+  }
+
+  private openLandSheet(cell: CellKey): void {
+    const sheet = role('build-sheet');
+    const content = role('sheet-content');
+    const save = this.store.save;
+    const price = landPrice(save.landPurchases);
+    const affordable = canBuyLand(save, cell);
+    setText('sheet-title', '空き地');
+    content.innerHTML = '';
+
+    const hint = document.createElement('p');
+    hint.className = 'sheet__hint';
+    hint.textContent = 'この土地を買うと、街が1区画広がります。';
+    content.appendChild(hint);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'option';
+    btn.disabled = !affordable;
+    btn.innerHTML =
+      '<span class="option__icon">🪧</span>' +
+      '<span class="option__main"><span class="option__name">土地を買う</span>' +
+      '<span class="option__desc">区画 ' +
+      save.land.length +
+      ' → ' +
+      (save.land.length + 1) +
+      '</span></span>' +
+      '<span class="option__cost">' +
+      price +
+      '★<small>' +
+      (affordable ? '買う' : 'あと' + Math.max(0, price - save.stars) + '★') +
+      '</small></span>';
+    btn.addEventListener('click', () => this.doBuyLand(cell));
+    content.appendChild(btn);
+
+    const next = townStage(save.land.length).next;
+    if (next) {
+      const note = document.createElement('p');
+      note.className = 'sheet__hint';
+      note.textContent =
+        'あと ' + (next.at - save.land.length) + '区画で「' + next.name + '」になり、' +
+        next.unlocks.map((t) => BUILDINGS[t].name).join('・') + 'が建てられるようになります。';
+      content.appendChild(note);
+    }
+
+    sheet.hidden = false;
+  }
+
+  private doBuyLand(cell: CellKey): void {
+    const r = this.store.purchaseLand(cell);
+    if (!r) {
+      toast('スターが足りません');
+      return;
+    }
+    audio.play('build');
+    this.closeSheet();
+    this.town.markLand(cell);
+    this.town.refitIfUntouched();
+    if (r.stage) {
+      const names = r.stage.unlocks.map((t) => BUILDINGS[t].name).join('・');
+      toast('「' + r.stage.name + '」になりました！' + names + 'が建てられるようになりました');
+      this.town.celebrateStars(40);
+      audio.play('levelUp');
+    } else {
+      toast('土地が広がりました');
+    }
   }
 
   private openSheet(cell: CellKey): void {
@@ -273,8 +398,30 @@ export class App {
       hint.textContent = 'ここに建てるものを選んでください。';
       content.appendChild(hint);
 
+      const nextStage = townStage(save.land.length).next;
+      const lockedPreview = nextStage?.unlocks[0] ?? null;
       for (const type of BUILDING_ORDER) {
+        const unlocked = isUnlocked(save, type);
+        if (!unlocked && type !== lockedPreview) continue;
         const spec = BUILDINGS[type];
+        if (!unlocked && nextStage) {
+          const lock = document.createElement('button');
+          lock.type = 'button';
+          lock.className = 'option option--locked';
+          lock.disabled = true;
+          lock.innerHTML =
+            '<span class="option__icon">🔒</span>' +
+            '<span class="option__main"><span class="option__name">' +
+            spec.name +
+            '</span><span class="option__desc">あと ' +
+            (nextStage.at - save.land.length) +
+            '区画で解放</span></span>' +
+            '<span class="option__cost">' +
+            buildCost(type) +
+            '★</span>';
+          content.appendChild(lock);
+          continue;
+        }
         const cost = buildCost(type);
         const affordable = canBuild(save, cell, type);
         const btn = document.createElement('button');
@@ -730,6 +877,7 @@ export class App {
         case 'reset-all':
           if (window.confirm('この端末に保存された記録（街・スター・ログ・アンケート）をすべて消します。よろしいですか？')) {
             this.store.resetAll();
+            this.town.fitToLand();
             this.minigame.stop();
             toast('記録を消しました');
             this.router.go('title');

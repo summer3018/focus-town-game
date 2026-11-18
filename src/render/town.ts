@@ -91,6 +91,11 @@ export class TownRenderer {
     this.userMoved = false;
   }
 
+  /** 利用者がカメラを動かしていなければ、街全体を映し直す（土地を買ったあとなど） */
+  refitIfUntouched(): void {
+    if (!this.userMoved) this.fitToLand();
+  }
+
   // ---------------- 操作 ----------------
 
   private toScreen(clientX: number, clientY: number): { x: number; y: number } {
