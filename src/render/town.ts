@@ -1,59 +1,30 @@
 /**
  * 街の描画。
- * 低い解像度（180×210）で描いて拡大することで、ドット絵らしい見た目にしている。
+ * 区画の座標を world 座標に置き、カメラ（拡大・縮小・スクロール）を通して描く。
+ * 画面に映っている区画だけを描くので、街が大きくなっても重くなりにくい。
  */
-import { parseCell } from '../core/grid';
+import { TILE_PX } from '../core/config';
+import { cellKey, parseCell } from '../core/grid';
 import type { CellKey } from '../core/grid';
+import { buildingCount } from '../core/buildings';
+import { buyableCells } from '../core/land';
 import type { SaveData } from '../core/types';
-import { buildingCount, townLevel } from '../core/buildings';
-import { EffectLayer, drawPixelStar } from './effects';
+import { TILE_H, TILE_W, fitCamera, panBy, screenToWorld, tileWidthPx, visibleBounds, zoomAt } from './camera';
+import type { Camera } from './camera';
+import { EffectLayer } from './effects';
+import { cellAt, cellPositions, landBounds } from './geometry';
+import type { CellPos } from './geometry';
 import { PALETTE, drawBuilding } from './sprites';
 
+/** 星が降る演出などを描く、画面に固定された論理座標の横幅（今までの見た目に合わせる） */
 export const LOGICAL_W = 180;
-export const LOGICAL_H = 210;
 
-const TILE_W = 48;
-const TILE_H = 24;
-const ORIGIN_X = 78;
-const ORIGIN_Y = 112;
-
-export interface CellPos {
-  cell: CellKey;
-  x: number;
-  y: number;
-  depth: number;
-}
-
-/** 区画の座標 → 画面上の論理座標（ひし形の中心） */
-export function cellPositions(cells: CellKey[]): CellPos[] {
-  const out: CellPos[] = [];
-  for (const cell of cells) {
-    const p = parseCell(cell);
-    if (!p) continue;
-    out.push({
-      cell,
-      x: ORIGIN_X + (p.x - p.y) * (TILE_W / 2),
-      y: ORIGIN_Y + (p.x + p.y) * (TILE_H / 2),
-      depth: p.x + p.y,
-    });
-  }
-  return out;
-}
-
-/** 論理座標が、どの区画の上にあるか */
-export function cellAt(cells: CellKey[], lx: number, ly: number): CellKey | null {
-  let found: CellKey | null = null;
-  let bestDepth = -Infinity;
-  for (const p of cellPositions(cells)) {
-    const dx = Math.abs(lx - p.x) / (TILE_W / 2);
-    const dy = Math.abs(ly - p.y) / (TILE_H / 2);
-    if (dx + dy <= 1 && p.depth >= bestDepth) {
-      bestDepth = p.depth;
-      found = p.cell;
-    }
-  }
-  return found;
-}
+/** 区画の土の厚み（world px） */
+const SOIL_DEPTH = 8;
+/** 画面外判定の余白（建物の高さぶん） */
+const CULL_MARGIN = 80;
+/** 小さすぎる区画をタップしたとき、この横幅まで寄る */
+const TAP_ZOOM_TARGET_PX = 72;
 
 function diamond(ctx: CanvasRenderingContext2D, cx: number, cy: number, hw: number, hh: number): void {
   ctx.beginPath();
@@ -64,23 +35,40 @@ function diamond(ctx: CanvasRenderingContext2D, cx: number, cy: number, hw: numb
   ctx.closePath();
 }
 
+function inBounds(p: CellPos, b: { minX: number; minY: number; maxX: number; maxY: number }): boolean {
+  return p.x >= b.minX && p.x <= b.maxX && p.y >= b.minY && p.y <= b.maxY;
+}
+
+export interface TownRendererOptions {
+  /** false ならタイトル画面用：操作できず、常に街全体を映す */
+  interactive?: boolean;
+}
+
 export class TownRenderer {
   readonly canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
+  /** 街の上の演出（土ぼこり・きらめき）。world 座標 */
   readonly effects = new EffectLayer();
+  /** 画面に固定の演出（星が降る）。横幅 LOGICAL_W の論理座標 */
+  private screenFx = new EffectLayer();
   private rafId = 0;
   private running = false;
-  private scale = 1;
-  private offsetX = 0;
-  private offsetY = 0;
+  private dpr = 1;
+  private viewW = 1;
+  private viewH = 1;
+  readonly interactive: boolean;
+  camera: Camera = { cx: 0, cy: 0, zoom: 1 };
+  /** 利用者がカメラを動かしたか（動かしていなければ画面サイズの変更で全体表示し直す） */
+  private userMoved = false;
   selectedCell: CellKey | null = null;
   /** 建設・強化の直後に、その区画だけ一瞬大きくする */
   private popAnim = new Map<CellKey, { start: number; kind: 'build' | 'upgrade' }>();
   private getSave: () => SaveData;
 
-  constructor(canvas: HTMLCanvasElement, getSave: () => SaveData) {
+  constructor(canvas: HTMLCanvasElement, getSave: () => SaveData, options: TownRendererOptions = {}) {
     this.canvas = canvas;
     this.getSave = getSave;
+    this.interactive = options.interactive ?? true;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('2Dコンテキストを取得できませんでした');
     this.ctx = ctx;
@@ -88,31 +76,60 @@ export class TownRenderer {
   }
 
   resize(): void {
-    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    this.dpr = Math.min(3, window.devicePixelRatio || 1);
     const rect = this.canvas.getBoundingClientRect();
-    const cssW = Math.max(1, rect.width);
-    const cssH = Math.max(1, rect.height);
-    this.canvas.width = Math.round(cssW * dpr);
-    this.canvas.height = Math.round(cssH * dpr);
-    const s = Math.min(this.canvas.width / LOGICAL_W, this.canvas.height / LOGICAL_H);
-    this.scale = s;
-    this.offsetX = (this.canvas.width - LOGICAL_W * s) / 2;
-    this.offsetY = (this.canvas.height - LOGICAL_H * s) / 2;
+    this.viewW = Math.max(1, rect.width);
+    this.viewH = Math.max(1, rect.height);
+    this.canvas.width = Math.round(this.viewW * this.dpr);
+    this.canvas.height = Math.round(this.viewH * this.dpr);
+    if (!this.interactive || !this.userMoved) this.fitToLand();
   }
 
-  /** 画面上のクリック位置を論理座標に変換する */
-  toLogical(clientX: number, clientY: number): { x: number; y: number } {
-    const rect = this.canvas.getBoundingClientRect();
-    const dpr = this.canvas.width / Math.max(1, rect.width);
-    const px = (clientX - rect.left) * dpr;
-    const py = (clientY - rect.top) * dpr;
-    return { x: (px - this.offsetX) / this.scale, y: (py - this.offsetY) / this.scale };
+  /** 持っている土地の全体が映る位置と倍率にする */
+  fitToLand(): void {
+    this.camera = fitCamera(landBounds(this.getSave().land), this.viewW, this.viewH);
+    this.userMoved = false;
   }
 
+  // ---------------- 操作 ----------------
+
+  private toScreen(clientX: number, clientY: number): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }
+
+  pan(dxCss: number, dyCss: number): void {
+    if (!this.interactive) return;
+    this.camera = panBy(this.camera, dxCss, dyCss);
+    this.userMoved = true;
+  }
+
+  zoomAtClient(clientX: number, clientY: number, factor: number): void {
+    if (!this.interactive) return;
+    const s = this.toScreen(clientX, clientY);
+    this.camera = zoomAt(this.camera, this.viewW, this.viewH, s.x, s.y, factor);
+    this.userMoved = true;
+  }
+
+  /** 区画が小さすぎてタップでは選ばせないか */
+  isTapTooSmall(): boolean {
+    return tileWidthPx(this.camera) < TILE_PX.tapMin;
+  }
+
+  /** 小さすぎる区画をタップしたとき、その場所に寄る */
+  zoomToTap(clientX: number, clientY: number): void {
+    this.zoomAtClient(clientX, clientY, TAP_ZOOM_TARGET_PX / tileWidthPx(this.camera));
+  }
+
+  /** タップした位置の区画（持っている土地と、買える土地） */
   hitCell(clientX: number, clientY: number): CellKey | null {
-    const { x, y } = this.toLogical(clientX, clientY);
-    return cellAt(this.getSave().land, x, y);
+    const s = this.toScreen(clientX, clientY);
+    const w = screenToWorld(this.camera, this.viewW, this.viewH, s.x, s.y);
+    const save = this.getSave();
+    return cellAt([...save.land, ...buyableCells(save)], w.x, w.y);
   }
+
+  // ---------------- 演出 ----------------
 
   markBuilt(cell: CellKey, now = performance.now()): void {
     this.popAnim.set(cell, { start: now, kind: 'build' });
@@ -126,8 +143,14 @@ export class TownRenderer {
     if (p) this.effects.burstSparkle(p.x, p.y, now);
   }
 
+  /** 土地を買ったとき */
+  markLand(cell: CellKey, now = performance.now()): void {
+    const p = cellPositions([cell])[0];
+    if (p) this.effects.burstDust(p.x, p.y, now);
+  }
+
   celebrateStars(amount: number, now = performance.now()): void {
-    this.effects.rainStars(amount, now, LOGICAL_W);
+    this.screenFx.rainStars(amount, now, LOGICAL_W);
   }
 
   start(): void {
@@ -147,33 +170,53 @@ export class TownRenderer {
     this.rafId = 0;
   }
 
+  // ---------------- 描画 ----------------
+
   draw(t: number): void {
     const ctx = this.ctx;
     const save = this.getSave();
+    if (!this.interactive) this.fitToLand();
+
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.imageSmoothingEnabled = false;
-    ctx.setTransform(this.scale, 0, 0, this.scale, this.offsetX, this.offsetY);
 
-    this.drawSky(ctx, t, save);
-    this.drawIsland(ctx);
-    this.drawTiles(ctx, save, t);
-    this.drawDecor(ctx, save, t);
+    // 空（画面に固定）
+    const k = (this.viewW / LOGICAL_W) * this.dpr;
+    ctx.setTransform(k, 0, 0, k, 0, 0);
+    this.drawSky(ctx, t, save, this.viewH / (this.viewW / LOGICAL_W));
+
+    // 街（カメラを通す）
+    const cam = this.camera;
+    const z = cam.zoom * this.dpr;
+    ctx.setTransform(z, 0, 0, z, (this.viewW / 2 - cam.cx * cam.zoom) * this.dpr, (this.viewH / 2 - cam.cy * cam.zoom) * this.dpr);
+    const view = visibleBounds(cam, this.viewW, this.viewH, CULL_MARGIN);
+    const owned = cellPositions(save.land).filter((p) => inBounds(p, view));
+    owned.sort((a, b) => a.depth - b.depth || a.x - b.x);
+    const forSale = this.interactive ? cellPositions(buyableCells(save)).filter((p) => inBounds(p, view)) : [];
+
+    this.drawGround(ctx, save, owned);
+    this.drawForSale(ctx, forSale, t);
+    this.drawTiles(ctx, save, owned, t);
     this.effects.draw(ctx, t);
+
+    // 画面に固定の演出
+    ctx.setTransform(k, 0, 0, k, 0, 0);
+    this.screenFx.draw(ctx, t);
   }
 
-  private drawSky(ctx: CanvasRenderingContext2D, t: number, save: SaveData): void {
-    const g = ctx.createLinearGradient(0, 0, 0, LOGICAL_H);
+  private drawSky(ctx: CanvasRenderingContext2D, t: number, save: SaveData, h: number): void {
+    const g = ctx.createLinearGradient(0, 0, 0, h);
     g.addColorStop(0, PALETTE.skyTop);
     g.addColorStop(1, PALETTE.skyBottom);
     ctx.fillStyle = g;
-    ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+    ctx.fillRect(0, 0, LOGICAL_W, h);
 
     // 雲
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
     const clouds = [
-      { x: (t / 90) % (LOGICAL_W + 60) - 30, y: 24, w: 22 },
-      { x: (t / 140 + 120) % (LOGICAL_W + 60) - 30, y: 46, w: 16 },
+      { x: ((t / 90) % (LOGICAL_W + 60)) - 30, y: 24, w: 22 },
+      { x: ((t / 140 + 120) % (LOGICAL_W + 60)) - 30, y: 46, w: 16 },
     ];
     for (const c of clouds) {
       ctx.beginPath();
@@ -198,47 +241,73 @@ export class TownRenderer {
     }
   }
 
-  private drawIsland(ctx: CanvasRenderingContext2D): void {
-    const cx = 90;
-    const cy = 130;
-    const hw = 72;
-    const hh = 36;
-    const depth = 12;
-
-    // 土の側面
-    ctx.fillStyle = PALETTE.soilDark;
-    ctx.beginPath();
-    ctx.moveTo(cx - hw, cy);
-    ctx.lineTo(cx, cy + hh);
-    ctx.lineTo(cx + hw, cy);
-    ctx.lineTo(cx + hw, cy + depth);
-    ctx.lineTo(cx, cy + hh + depth);
-    ctx.lineTo(cx - hw, cy + depth);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = PALETTE.soil;
-    ctx.beginPath();
-    ctx.moveTo(cx - hw, cy);
-    ctx.lineTo(cx, cy + hh);
-    ctx.lineTo(cx, cy + hh + depth * 0.6);
-    ctx.lineTo(cx - hw, cy + depth * 0.6);
-    ctx.closePath();
-    ctx.fill();
-
-    // 芝生の面
-    ctx.fillStyle = PALETTE.grass;
-    diamond(ctx, cx, cy, hw, hh);
-    ctx.fill();
-    ctx.fillStyle = PALETTE.grassLight;
-    diamond(ctx, cx - 10, cy - 6, hw * 0.55, hh * 0.55);
-    ctx.fill();
+  /** 持っている土地の地面。手前のふちには土の側面を描いて、島のように見せる */
+  private drawGround(ctx: CanvasRenderingContext2D, save: SaveData, owned: CellPos[]): void {
+    const land = new Set(save.land);
+    const hw = TILE_W / 2;
+    const hh = TILE_H / 2;
+    for (const p of owned) {
+      const c = parseCell(p.cell)!;
+      // 右手前（x+1）と左手前（y+1）に土地がなければ、側面が見える
+      if (!land.has(cellKey(c.x + 1, c.y))) {
+        ctx.fillStyle = PALETTE.soilDark;
+        ctx.beginPath();
+        ctx.moveTo(p.x + hw, p.y);
+        ctx.lineTo(p.x, p.y + hh);
+        ctx.lineTo(p.x, p.y + hh + SOIL_DEPTH);
+        ctx.lineTo(p.x + hw, p.y + SOIL_DEPTH);
+        ctx.closePath();
+        ctx.fill();
+      }
+      if (!land.has(cellKey(c.x, c.y + 1))) {
+        ctx.fillStyle = PALETTE.soil;
+        ctx.beginPath();
+        ctx.moveTo(p.x - hw, p.y);
+        ctx.lineTo(p.x, p.y + hh);
+        ctx.lineTo(p.x, p.y + hh + SOIL_DEPTH);
+        ctx.lineTo(p.x - hw, p.y + SOIL_DEPTH);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    for (const p of owned) {
+      ctx.fillStyle = PALETTE.grass;
+      diamond(ctx, p.x, p.y, hw + 0.5, hh + 0.25);
+      ctx.fill();
+      ctx.fillStyle = PALETTE.grassLight;
+      diamond(ctx, p.x - 3, p.y - 2, hw * 0.45, hh * 0.45);
+      ctx.fill();
+    }
   }
 
-  private drawTiles(ctx: CanvasRenderingContext2D, save: SaveData, t: number): void {
-    const positions = cellPositions(save.land).sort((a, b) => a.depth - b.depth || a.y - b.y);
+  /** 買える土地：薄いひし形と「売地」の小さな立て札 */
+  private drawForSale(ctx: CanvasRenderingContext2D, cells: CellPos[], t: number): void {
+    for (const p of cells) {
+      const selected = this.selectedCell === p.cell;
+      ctx.fillStyle = selected ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.18)';
+      diamond(ctx, p.x, p.y, TILE_W / 2 - 2, TILE_H / 2 - 1);
+      ctx.fill();
+      ctx.strokeStyle = selected ? '#ffffff' : 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = selected ? 1.4 : 0.8;
+      ctx.setLineDash([2, 3]);
+      ctx.lineDashOffset = -((t / 90) % 5);
+      diamond(ctx, p.x, p.y, TILE_W / 2 - 2.5, TILE_H / 2 - 1.5);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // 立て札
+      ctx.fillStyle = '#9c7149';
+      ctx.fillRect(Math.round(p.x), Math.round(p.y - 9), 1, 9);
+      ctx.fillStyle = '#fff6ea';
+      ctx.fillRect(Math.round(p.x - 4), Math.round(p.y - 12), 9, 5);
+      ctx.fillStyle = '#c45a4b';
+      ctx.fillRect(Math.round(p.x - 3), Math.round(p.y - 11), 7, 1);
+      ctx.fillRect(Math.round(p.x - 3), Math.round(p.y - 9), 5, 1);
+    }
+  }
 
-    // 先に全区画の地面を描く
-    for (const p of positions) {
+  private drawTiles(ctx: CanvasRenderingContext2D, save: SaveData, owned: CellPos[], t: number): void {
+    // 先に区画の地面の印を描く
+    for (const p of owned) {
       const b = save.buildings[p.cell];
       ctx.fillStyle = b ? PALETTE.grassDark : 'rgba(255,255,255,0.22)';
       diamond(ctx, p.x, p.y, TILE_W / 2 - 1.5, TILE_H / 2 - 1);
@@ -268,7 +337,7 @@ export class TownRenderer {
     }
 
     // 奥から手前の順に建物を描く
-    for (const p of positions) {
+    for (const p of owned) {
       const b = save.buildings[p.cell];
       if (!b) continue;
       const anim = this.popAnim.get(p.cell);
@@ -298,38 +367,6 @@ export class TownRenderer {
       ctx.restore();
     }
   }
-
-  private drawDecor(ctx: CanvasRenderingContext2D, save: SaveData, t: number): void {
-    const level = townLevel(save);
-    if (level >= 6) {
-      // 街灯
-      const lamps = [
-        { x: 36, y: 142 },
-        { x: 146, y: 136 },
-      ];
-      for (const l of lamps) {
-        ctx.fillStyle = '#7b6b58';
-        ctx.fillRect(l.x, l.y - 12, 1, 12);
-        ctx.fillStyle = '#ffe9a8';
-        ctx.fillRect(l.x - 1, l.y - 15, 3, 3);
-        const glow = (Math.sin(t / 700) + 1) / 2;
-        ctx.globalAlpha = 0.18 + glow * 0.12;
-        ctx.beginPath();
-        ctx.arc(l.x, l.y - 14, 7, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-    }
-    if (level >= 10) {
-      // にぎやかさの印として、島のふちに星が舞う
-      for (let i = 0; i < 3; i += 1) {
-        const a = t / 1600 + (i * Math.PI * 2) / 3;
-        const x = 90 + Math.cos(a) * 74;
-        const y = 128 + Math.sin(a) * 34;
-        ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t / 400 + i);
-        drawPixelStar(ctx, x, y, 2, '#ffe079');
-        ctx.globalAlpha = 1;
-      }
-    }
-  }
 }
+
+export { TILE_H, TILE_W };

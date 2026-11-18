@@ -40,7 +40,7 @@ export class App {
     this.store = store;
     this.router = new ScreenRouter((next, prev) => this.onScreenChange(next, prev));
     this.town = new TownRenderer(qs<HTMLCanvasElement>('#townCanvas'), () => this.store.save);
-    this.titleTown = new TownRenderer(qs<HTMLCanvasElement>('#titleCanvas'), () => this.store.save);
+    this.titleTown = new TownRenderer(qs<HTMLCanvasElement>('#titleCanvas'), () => this.store.save, { interactive: false });
     this.minigame = new MinigameView(qs<HTMLCanvasElement>('#mgCanvas'), {
       onTick: (sec, score, combo) => {
         setText('mg-time', sec);

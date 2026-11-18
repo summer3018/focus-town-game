@@ -223,6 +223,9 @@ export const BUILDING_ORDER: BuildingType[] = [
   'radioTower',
 ];
 
+/** 区画の画面上の横幅（CSS px）。min〜max が拡大の範囲、tapMin 未満のタップは選ばずに拡大する */
+export const TILE_PX = { min: 32, max: 160, tapMin: 56 } as const;
+
 /** 土地の値段 = min(max, base + step × これまでに買った数) */
 export const LAND_COST = { base: 15, step: 5, max: 60 } as const;
 
