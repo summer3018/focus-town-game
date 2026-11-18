@@ -37,6 +37,8 @@ export class App {
     answeredAt: 0,
   };
   private lastStarValue = 0;
+  /** 街のキャンバスの指の見分け（画面を離れたら reset する） */
+  private townGestures = createGestureTracker();
 
   constructor(store: GameStore) {
     this.store = store;
@@ -156,6 +158,7 @@ export class App {
   }
 
   private onScreenChange(next: ScreenName, prev: ScreenName): void {
+    if (prev === 'home' && next !== 'home') this.townGestures.reset();
     if (next === 'home') {
       this.town.resize();
       this.town.start();
@@ -257,7 +260,7 @@ export class App {
 
   private bindTownTaps(): void {
     const canvas = qs<HTMLCanvasElement>('#townCanvas');
-    const gestures = createGestureTracker();
+    const gestures = this.townGestures;
     const rectOf = () => canvas.getBoundingClientRect();
     const apply = (r: ReturnType<typeof gestures.move>) => {
       if (r.kind === 'pan') this.town.pan(r.dx, r.dy);
@@ -292,6 +295,10 @@ export class App {
       apply(gestures.up(ev.pointerId, p.x, p.y, ev.timeStamp));
     });
     canvas.addEventListener('pointercancel', (ev) => {
+      apply(gestures.cancel(ev.pointerId));
+    });
+    // 指を離したことが届かなかった場合（別の画面に移った・ウィンドウが切り替わった）
+    canvas.addEventListener('lostpointercapture', (ev) => {
       apply(gestures.cancel(ev.pointerId));
     });
     canvas.addEventListener(

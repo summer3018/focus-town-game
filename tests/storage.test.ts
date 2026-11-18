@@ -62,6 +62,15 @@ describe('保存データ v2（座標の区画）', () => {
     expect(s.landPurchases).toBe(1);
   });
 
+  it('壊れた v2（land が無い・version が無い）でも、座標の建物は消さない', () => {
+    const house = { type: 'house', level: 3, builtAt: T0, upgradedAt: T0 };
+    const a = normalizeSave({ version: 2, land: null, landPurchases: 4, buildings: { '0,0': house, '2,1': house } }, T0);
+    expect(a.buildings['0,0']?.level).toBe(3);
+    expect(a.buildings['2,1']?.level).toBe(3);
+    const b = normalizeSave({ land: ['0,0', '1,0', '2,0', '0,1', '1,1', '2,1', '3,0'], buildings: { '3,0': house } }, T0);
+    expect(b.buildings['3,0']?.type).toBe('house');
+  });
+
   it('land が空でも最初の6区画は残る', () => {
     const s = normalizeSave({ version: 2, land: [], buildings: {} }, T0);
     expect([...s.land].sort()).toEqual([...INITIAL_CELLS].sort());

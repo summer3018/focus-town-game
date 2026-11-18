@@ -85,3 +85,16 @@ describe('カメラ', () => {
     expect(v.maxY).toBeCloseTo(50 + VH / 4 + 10);
   });
 });
+
+describe('タイトル画面用の全体表示', () => {
+  it('区画の下限を外せば、大きな街でも全体が収まる', () => {
+    const b = { minX: -4800, minY: -2400, maxX: 4800, maxY: 2400 };
+    const cam = fitCamera(b, VW, VH, 0);
+    const tl = worldToScreen(cam, VW, VH, b.minX, b.minY);
+    const br = worldToScreen(cam, VW, VH, b.maxX, b.maxY);
+    expect(tl.x).toBeGreaterThanOrEqual(-1e-6);
+    expect(br.x).toBeLessThanOrEqual(VW + 1e-6);
+    expect(tl.y).toBeGreaterThanOrEqual(-1e-6);
+    expect(br.y).toBeLessThanOrEqual(VH + 1e-6);
+  });
+});

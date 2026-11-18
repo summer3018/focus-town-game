@@ -176,8 +176,8 @@ export function normalizeSave(raw: unknown, now: number, rand: () => number = Ma
   const rawBuildings = (o.buildings && typeof o.buildings === 'object' ? o.buildings : {}) as Record<string, unknown>;
   const buildings: Record<CellKey, PlacedBuilding> = {};
   for (const [rawKey, rawValue] of Object.entries(rawBuildings)) {
-    // v1 は区画番号 "0"〜"5"、v2 は座標 "x,y"
-    const key = isV1 ? (/^[0-5]$/.test(rawKey) ? slotToCell(Number(rawKey)) : null) : canonicalCell(rawKey);
+    // 区画番号 "0"〜"5" は v1、それ以外は座標 "x,y"（数字だけのキーは座標にならないので混ざらない）
+    const key = /^[0-5]$/.test(rawKey) ? slotToCell(Number(rawKey)) : canonicalCell(rawKey);
     if (!key || !land.includes(key)) continue;
     const b = normalizeBuilding(rawValue, now);
     if (b) buildings[key] = b;

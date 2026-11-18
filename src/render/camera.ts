@@ -35,12 +35,15 @@ export function clampZoom(zoom: number): number {
   return Math.min(max, Math.max(min, zoom));
 }
 
-/** 外枠が画面に収まる倍率と位置。ただし区画は TILE_PX.tapMin より小さくしない */
-export function fitCamera(bounds: Bounds, viewW: number, viewH: number): Camera {
+/**
+ * 外枠が画面に収まる倍率と位置。ただし区画は minTilePx（既定は TILE_PX.tapMin）より小さくしない。
+ * タイトル画面のように操作しない表示では minTilePx = 0 にして、必ず全体を収める。
+ */
+export function fitCamera(bounds: Bounds, viewW: number, viewH: number, minTilePx: number = TILE_PX.tapMin): Camera {
   const bw = Math.max(1, bounds.maxX - bounds.minX);
   const bh = Math.max(1, bounds.maxY - bounds.minY);
   const fit = Math.min(viewW / bw, viewH / bh);
-  const zoom = clampZoom(Math.max(TILE_PX.tapMin / TILE_W, fit));
+  const zoom = Math.min(TILE_PX.max / TILE_W, Math.max(minTilePx / TILE_W, fit));
   return { cx: (bounds.minX + bounds.maxX) / 2, cy: (bounds.minY + bounds.maxY) / 2, zoom };
 }
 

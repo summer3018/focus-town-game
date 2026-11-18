@@ -66,3 +66,22 @@ describe('タップ・ドラッグ・つまむ の見分け', () => {
     expect(g.up(1, 0, 0, 10).kind).toBe('none');
   });
 });
+
+describe('取りこぼした指で固まらない', () => {
+  it('pointerup が届かなかった指があっても、同じ指の次のタップは効く', () => {
+    const g = createGestureTracker();
+    g.down(1, 0, 0, 0);
+    g.move(1, 50, 0, 10); // ドラッグ中に up が届かなかった
+    g.down(1, 100, 100, 1000);
+    expect(g.up(1, 100, 100, 1010).kind).toBe('tap');
+  });
+
+  it('reset のあとは、残っていた指を忘れてタップできる', () => {
+    const g = createGestureTracker();
+    g.down(1, 0, 0, 0);
+    g.move(1, 50, 0, 10);
+    g.reset();
+    g.down(2, 10, 10, 1000);
+    expect(g.up(2, 10, 10, 1010).kind).toBe('tap');
+  });
+});

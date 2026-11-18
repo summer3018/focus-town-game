@@ -17,6 +17,8 @@ export interface GestureTracker {
   move(id: number, x: number, y: number, t: number): GestureResult;
   up(id: number, x: number, y: number, t: number): GestureResult;
   cancel(id: number): GestureResult;
+  /** 残っている指を全部忘れる（画面を離れたときなど） */
+  reset(): void;
 }
 
 type Mode = 'idle' | 'maybeTap' | 'pan' | 'pinch';
@@ -49,7 +51,8 @@ export function createGestureTracker(): GestureTracker {
   return {
     down(id, x, y) {
       pts.set(id, { x, y });
-      if (pts.size === 1 && mode === 'idle') {
+      // 指が1本だけなら、前の操作の取りこぼしがあっても新しいタップとして始める
+      if (pts.size === 1) {
         mode = 'maybeTap';
         start = { x, y };
       } else if (pts.size >= 2) {
@@ -107,6 +110,11 @@ export function createGestureTracker(): GestureTracker {
       if (pts.size === 0) mode = 'idle';
       else if (mode === 'maybeTap') mode = 'pan';
       return NONE;
+    },
+
+    reset() {
+      pts.clear();
+      mode = 'idle';
     },
   };
 }

@@ -87,7 +87,7 @@ export class TownRenderer {
 
   /** 持っている土地の全体が映る位置と倍率にする */
   fitToLand(): void {
-    this.camera = fitCamera(landBounds(this.getSave().land), this.viewW, this.viewH);
+    this.camera = fitCamera(landBounds(this.getSave().land), this.viewW, this.viewH, this.interactive ? undefined : 0);
     this.userMoved = false;
   }
 
